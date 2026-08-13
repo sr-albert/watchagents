@@ -8,9 +8,15 @@ final class ProcessMonitorTests: XCTestCase {
         albert 501  12.3  1.5 123456 45678 ??  S    9:00AM 0:12.34 claude
         albert 777   0.1  0.2 111111 22222 ??  S    9:01AM 0:01.00 /Applications/ClaudeMonitor.app/Contents/MacOS/ClaudeMonitor
         albert 900   2.0  0.4  99999 33333 ??  S    9:02AM 0:00.50 /bin/zsh -c ls
+        albert 950   0.0  0.0  88888 11111 s007 S+  9:03AM 0:09.44 bash /Users/albert/.local/bin/claude-monitor
         """
 
-        let result = ProcessParsing.parsePS(output, excludingProcessNames: ["claudemonitor"])
+        // Mirrors the exclusion list ProcessMonitor.snapshot() actually passes, including
+        // the hyphenated legacy bash script.
+        let result = ProcessParsing.parsePS(
+            output,
+            excludingProcessNames: ["claudemonitor", "claude-monitor"]
+        )
 
         XCTAssertEqual(result, [ClaudeProcess(pid: 501, cpu: 12.3, mem: 1.5)])
     }

@@ -10,6 +10,11 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Formatting.tokens(45_000), "45k")
     }
 
+    func test_tokens_thousands_roundsRatherThanTruncates() {
+        XCTAssertEqual(Formatting.tokens(45_900), "46k")
+        XCTAssertEqual(Formatting.tokens(45_400), "45k")
+    }
+
     func test_tokens_millions_returnsMSuffixWithTwoDecimals() {
         XCTAssertEqual(Formatting.tokens(2_500_000), "2.50M")
     }

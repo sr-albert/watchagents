@@ -7,7 +7,7 @@ struct ClaudeProcess: Equatable {
     var cwd: String = "(unknown)"
 }
 
-struct ProcessSnapshot {
+struct ProcessSnapshot: Equatable {
     let processes: [ClaudeProcess]
     let cpuTotal: Double
     let memTotal: Double
@@ -62,7 +62,9 @@ final class ProcessMonitor {
         process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        // Discard stderr rather than buffering it unread: an unread pipe can fill the
+        // OS buffer and deadlock `waitUntilExit()`.
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
         } catch {
@@ -75,7 +77,12 @@ final class ProcessMonitor {
 
     func snapshot() -> ProcessSnapshot {
         let psOutput = run("/bin/ps", ["aux"])
-        var processes = ProcessParsing.parsePS(psOutput, excludingProcessNames: ["claudemonitor"])
+        // "claude-monitor" is the legacy bash script (~/.local/bin/claude-monitor), which
+        // stays installed during the transition and would otherwise be counted as a session.
+        var processes = ProcessParsing.parsePS(
+            psOutput,
+            excludingProcessNames: ["claudemonitor", "claude-monitor"]
+        )
         for i in processes.indices {
             let lsofOutput = run("/usr/sbin/lsof", ["-a", "-p", "\(processes[i].pid)", "-d", "cwd", "-Fn"])
             if let cwd = ProcessParsing.parseCWD(lsofOutput) {

@@ -1,3 +1,4 @@
+import Foundation
 import ServiceManagement
 
 @MainActor
@@ -17,8 +18,12 @@ final class LoginItemManager: ObservableObject {
             }
         } catch {
             // Registration can fail (e.g. running an unbundled `swift run` binary
-            // outside /Applications); fall through and re-read the real status
-            // below so the toggle reflects what actually happened.
+            // outside /Applications); leave a breadcrumb on stderr, then fall through
+            // and re-read the real status below so the toggle reflects what happened.
+            if let message = "LoginItemManager: \(enabled ? "register" : "unregister") failed: \(error)\n"
+                .data(using: .utf8) {
+                FileHandle.standardError.write(message)
+            }
         }
         isEnabled = SMAppService.mainApp.status == .enabled
     }

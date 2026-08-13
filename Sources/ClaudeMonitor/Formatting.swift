@@ -5,7 +5,8 @@ enum Formatting {
         if n >= 1_000_000 {
             return String(format: "%.2fM", Double(n) / 1_000_000)
         } else if n >= 1_000 {
-            return "\(n / 1_000)k"
+            // Round rather than truncate, matching the original script's `f'{n/1_000:.0f}k'`.
+            return String(format: "%.0fk", Double(n) / 1_000)
         } else {
             return "\(n)"
         }
