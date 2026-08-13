@@ -14,10 +14,10 @@ final class MonitorViewModel: ObservableObject {
         refreshProcesses()
         refreshUsage()
         processTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.refreshProcesses()
+            Task { @MainActor in self?.refreshProcesses() }
         }
         usageTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.refreshUsage()
+            Task { @MainActor in self?.refreshUsage() }
         }
     }
 
@@ -30,7 +30,8 @@ final class MonitorViewModel: ObservableObject {
         let monitor = processMonitor
         Task.detached { [weak self] in
             let result = monitor.snapshot()
-            await MainActor.run { self?.snapshot = result }
+            guard let self else { return }
+            await MainActor.run { self.snapshot = result }
         }
     }
 
@@ -38,7 +39,8 @@ final class MonitorViewModel: ObservableObject {
         let fetcher = usageFetcher
         Task.detached { [weak self] in
             let result = fetcher.fetch()
-            await MainActor.run { self?.usageResult = result }
+            guard let self else { return }
+            await MainActor.run { self.usageResult = result }
         }
     }
 }
