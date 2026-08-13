@@ -3,6 +3,7 @@ import AppKit
 
 struct DropdownView: View {
     @ObservedObject var viewModel: MonitorViewModel
+    @StateObject private var loginItem = LoginItemManager()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -13,6 +14,10 @@ struct DropdownView: View {
             Divider()
             usageSection
             Divider()
+            Toggle("Launch at Login", isOn: Binding(
+                get: { loginItem.isEnabled },
+                set: { loginItem.setEnabled($0) }
+            ))
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
