@@ -41,11 +41,24 @@ enum UsageBlockResult: Equatable {
 }
 
 enum UsageBlockParsing {
+    /// `ccusage` emits fractional seconds (e.g. "2026-08-13T06:00:00.000Z"), which a
+    /// plain `.withInternetDateTime` formatter rejects. Hand-written fixtures and other
+    /// tools may omit them, so try fractional first and fall back to the plain shape.
+    private static let isoFractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     private static let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
+
+    static func date(fromISO8601 string: String) -> Date? {
+        isoFractionalFormatter.date(from: string) ?? isoFormatter.date(from: string)
+    }
 
     static func parse(_ data: Data, now: Date) -> UsageBlockResult {
         guard let response = try? JSONDecoder().decode(CcusageResponse.self, from: data) else {
@@ -54,8 +67,8 @@ enum UsageBlockParsing {
         guard let active = response.blocks.first(where: { $0.isActive }) else {
             return .noActiveBlock
         }
-        guard let endTime = isoFormatter.date(from: active.endTime),
-              let startTime = isoFormatter.date(from: active.startTime) else {
+        guard let endTime = date(fromISO8601: active.endTime),
+              let startTime = date(fromISO8601: active.startTime) else {
             return .unavailable
         }
 
@@ -87,7 +100,9 @@ final class UsageBlockFetcher {
         process.arguments = ["-lc", "npx --yes ccusage blocks --json"]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        // Discard stderr rather than buffering it unread: an unread pipe can fill the
+        // OS buffer and deadlock `waitUntilExit()`.
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
         } catch {
