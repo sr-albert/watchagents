@@ -4,6 +4,11 @@ A native macOS menu bar app for watching your Claude Code sessions: running proc
 
 Built with SwiftUI + Swift Package Manager, no Xcode project required.
 
+<p align="center">
+  <img src="screenshots/menubar.png" alt="Menu bar icon showing usage percentage" height="28"><br>
+  <img src="screenshots/dropdown.png" alt="Dropdown showing sessions, CPU/MEM, and usage block" width="360">
+</p>
+
 ## Requirements
 
 - macOS 13.0 (Ventura) or later
