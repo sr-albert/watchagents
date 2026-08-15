@@ -20,40 +20,19 @@ enum AnimalOverlay {
     }
 }
 
-struct AnimalView: View {
+private struct AnimatedIcon: View {
     let species: AnimalSpecies
     let state: SessionState
 
     @State private var isAnimating = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Text(species.rawValue)
-                .font(.system(size: 40))
-                .grayscale(state == .frozen ? 0.7 : 0)
-                .offset(y: bobOffset)
-                .animation(stateAnimation, value: isAnimating)
-            if let badge = AnimalOverlay.badge(for: state) {
-                Text(badge)
-                    .font(.system(size: 16))
-                    .offset(x: 4, y: -4)
-            }
-        }
-        .padding(10)
-        .background(Circle().fill(AnimalOverlay.tint(for: state)))
-        .onAppear { isAnimating = true }
-        .onChange(of: state) { _ in
-            // The repeatForever loop kicked off in .onAppear keeps using the
-            // animation config it was given at that moment; `.animation(_, value:)`
-            // only reapplies on changes to `isAnimating`, not to `state`. Toggling
-            // `isAnimating` off then back on inside `withAnimation` forces a fresh
-            // transition using the *new* state's `stateAnimation`/`bobOffset`, so a
-            // persisting session's motion actually updates when its state changes.
-            isAnimating = false
-            withAnimation(stateAnimation) {
-                isAnimating = true
-            }
-        }
+        Text(species.rawValue)
+            .font(.system(size: 40))
+            .grayscale(state == .frozen ? 0.7 : 0)
+            .offset(y: bobOffset)
+            .animation(stateAnimation, value: isAnimating)
+            .onAppear { isAnimating = true }
     }
 
     private var bobOffset: CGFloat {
@@ -72,6 +51,25 @@ struct AnimalView: View {
         case .overloaded: return .easeInOut(duration: 0.175).repeatForever(autoreverses: true)
         case .frozen: return nil
         }
+    }
+}
+
+struct AnimalView: View {
+    let species: AnimalSpecies
+    let state: SessionState
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            AnimatedIcon(species: species, state: state)
+                .id(state)
+            if let badge = AnimalOverlay.badge(for: state) {
+                Text(badge)
+                    .font(.system(size: 16))
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .padding(10)
+        .background(Circle().fill(AnimalOverlay.tint(for: state)))
     }
 }
 
