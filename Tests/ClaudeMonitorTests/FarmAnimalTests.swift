@@ -124,16 +124,36 @@ final class FarmAnimalTintTests: XCTestCase {
 
     func test_onlyOverloadedLiftsTowardRed() {
         for state in [SessionState.idle, .active, .frozen] {
-            XCTAssertEqual(FarmAnimalPlacer.tint(for: state, time: 0.3).lift, 0, accuracy: 0.0001,
+            XCTAssertEqual(FarmAnimalPlacer.tint(for: state, time: 0.3).redLift, 0, accuracy: 0.0001,
                            "\(state) must not lift the red channel")
         }
     }
 
     func test_overloadedLiftOscillatesAcrossTheSpecRange() {
         let lifts = stride(from: 0.0, to: 1.0, by: 0.02)
-            .map { FarmAnimalPlacer.tint(for: .overloaded, time: $0).lift }
+            .map { FarmAnimalPlacer.tint(for: .overloaded, time: $0).redLift }
         XCTAssertGreaterThanOrEqual(lifts.min()!, -0.0001)
         XCTAssertLessThanOrEqual(lifts.max()!, 0.4501, "spec §5.3 caps amt at 0.45")
         XCTAssertGreaterThan(lifts.max()! - lifts.min()!, 0.3, "the pulse should traverse most of its range")
+    }
+}
+
+final class FarmAnimalWanderTests: XCTestCase {
+    func test_idleWanderStaysAnchored() {
+        // §5.6: small amplitude, always returning to a per-pid anchor. Free drift is
+        // invisible frame-to-frame and obvious after five minutes.
+        let pen = placedPen([.idle])
+        let samples = stride(from: 0.0, through: 120.0, by: 0.5).map {
+            FarmAnimalPlacer.place(pen: pen, time: $0)[0]
+        }
+        let xs = samples.map(\.bx), ys = samples.map(\.by)
+        XCTAssertLessThanOrEqual(xs.max()! - xs.min()!, 16, "wander exceeded one tile horizontally")
+        XCTAssertLessThanOrEqual(ys.max()! - ys.min()!, 16, "wander exceeded one tile vertically")
+        // And it must genuinely return, not creep: the last minute must cover the same
+        // ground as the first, which a drifting implementation would not.
+        let firstHalf = Set(samples.prefix(samples.count / 2).map(\.bx))
+        let secondHalf = Set(samples.suffix(samples.count / 2).map(\.bx))
+        XCTAssertFalse(firstHalf.intersection(secondHalf).isEmpty,
+                       "the animal never revisits its earlier positions — it is drifting")
     }
 }
