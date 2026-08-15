@@ -7,6 +7,8 @@ final class MonitorViewModel: ObservableObject {
 
     private let processMonitor = ProcessMonitor()
     private let usageFetcher = UsageBlockFetcher()
+    private let sessionStateTracker = SessionStateTracker()
+    let overloadSettings = OverloadSettings()
     private var processTimer: Timer?
     private var usageTimer: Timer?
     private var isPolling = false
@@ -43,10 +45,25 @@ final class MonitorViewModel: ObservableObject {
         isRefreshingProcesses = true
 
         let monitor = processMonitor
+        let tracker = sessionStateTracker
+        let basis = overloadSettings.basis
         Task.detached { [weak self] in
-            let result = monitor.snapshot()
+            let rawSnapshot = monitor.snapshot()
+            let now = Date()
             guard let self else { return }
             await MainActor.run {
+                let states = tracker.states(for: rawSnapshot, now: now, basis: basis)
+                let processes = rawSnapshot.processes.map { process -> ClaudeProcess in
+                    var updated = process
+                    updated.state = states[process.pid] ?? .idle
+                    return updated
+                }
+                let result = ProcessSnapshot(
+                    processes: processes,
+                    cpuTotal: rawSnapshot.cpuTotal,
+                    memTotal: rawSnapshot.memTotal,
+                    sessionCount: rawSnapshot.sessionCount
+                )
                 if result != self.snapshot { self.snapshot = result }
                 self.isRefreshingProcesses = false
             }
