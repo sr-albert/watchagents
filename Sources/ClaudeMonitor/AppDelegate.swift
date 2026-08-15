@@ -12,7 +12,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private let viewModel = MonitorViewModel()
+    let viewModel = MonitorViewModel()
     private var usageResultSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {

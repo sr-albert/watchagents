@@ -16,6 +16,7 @@ struct DropdownView: View {
     @ObservedObject var viewModel: MonitorViewModel
     @ObservedObject var overloadSettings: OverloadSettings
     @StateObject private var loginItem = LoginItemManager()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -34,6 +35,9 @@ struct DropdownView: View {
                 ForEach(OverloadBasis.allCases, id: \.self) { basis in
                     Text(basis.rawValue.uppercased()).tag(basis)
                 }
+            }
+            Button("Open Farm 🌾") {
+                openWindow(id: "farm")
             }
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
