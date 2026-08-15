@@ -17,6 +17,12 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 
+# SPM's generated accessor resolves Bundle.module against Bundle.main.bundleURL, which is
+# the .app's root and can never be sealed by codesign. FarmAssets prefers Contents/Resources
+# instead (a sealed location), so the bundle must land there, and it must do so BEFORE
+# signing so codesign --deep can see and seal it as part of the app's resources.
+cp -R "$BUILD_DIR/ClaudeMonitor_ClaudeMonitor.bundle" "$APP_DIR/Contents/Resources/"
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -43,17 +49,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 PLIST
 
 echo "Ad-hoc code signing..."
-# Sign before the resource bundle is added below: codesign refuses to seal a "*.bundle"
-# directory sitting loose at the app's top level (it wants only Contents/ there), and
-# --deep additionally chokes on it because it has no Info.plist of its own. Signing
-# just the app is fine since there is no nested executable code to sign.
-codesign --force --sign - "$APP_DIR"
-
-# SPM's generated accessor looks for the resource bundle next to Bundle.main.bundleURL.
-# For a packaged .app, Bundle.main.bundleURL is the .app bundle's root directory itself
-# (NOT Contents/MacOS or Contents/Resources), so the resource bundle must land there or
-# Bundle.module traps at runtime. It is copied in after signing (see note above).
-cp -R "$BUILD_DIR/ClaudeMonitor_ClaudeMonitor.bundle" "$APP_DIR/"
+codesign --force --deep --sign - "$APP_DIR"
 
 echo "Installed $APP_DIR"
 echo "Launch with: open \"$APP_DIR\""
