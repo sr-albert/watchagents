@@ -45,12 +45,14 @@ enum FarmAnimalPlacer {
     /// place them; that pixel work belongs to the renderer in Task 10.
     ///
     /// Not `private`: this is an approximation of the real, per-frame trimmed sprite
-    /// box (mock7.py computed `wmax`/`hmax` from the actual cropped bitmap). Task 10
-    /// should reuse *this* table for the badge offset `(bx + w/2 - 8, by - h - 13)`
-    /// and the draw anchor `(bx, by - h)` rather than deriving its own from the real
-    /// asset — the `bx`/`by` above were already computed against these numbers, and
-    /// a second, disagreeing width/height table would reintroduce the centering and
-    /// clamp math this file already did.
+    /// box (mock7.py computed `wmax`/`hmax` from the actual cropped bitmap), used here
+    /// only for layout math — slot spacing, the state offset, and the `(bx, by)`
+    /// clamps above. The renderer draws with the real trimmed `CGImage`'s actual
+    /// dimensions (badge offset `(bx + w/2 - 8, by - h - 13)`, draw anchor
+    /// `(bx, by - h)`), which is *more* accurate against `mock7.py` than this table —
+    /// this table is off from the real trimmed bounds by up to +4px width, -7px
+    /// height. That's expected: this is a placement-time approximation, not a second
+    /// source of truth to keep in sync with the renderer's.
     static func spriteSize(for species: AnimalSpecies) -> (w: Int, h: Int) {
         switch species {
         case .cow: return (71, 44)

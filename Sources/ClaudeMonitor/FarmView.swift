@@ -172,27 +172,25 @@ func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
     // as optional; this just fills them in instead of leaving them nil.
     let normalized: FarmLayout
     if layout.pens.isEmpty {
+        // Fix 6: `rows` must already be at least `requiredRows` here, the same way the
+        // scroll path (`FarmScene`'s "nothing fit" fallback) re-derives `rows` from
+        // `requiredRows` before returning. Leaving `rows` at the window's (possibly
+        // smaller) row count while reporting a bigger `requiredRows` separately made
+        // `FarmDirt`/`FarmScenery` — which clip against `layout.rows`, not
+        // `requiredRows` — draw the treeline and frame against the wrong, shorter
+        // bound, at whatever scale is short enough to hit it.
         normalized = FarmLayout(
             pens: [], laneYs: [],
             barnX: FarmLayoutEngine.marginL, barnY: FarmLayoutEngine.marginT,
-            cols: layout.cols, rows: layout.rows,
-            requiredRows: FarmLayoutEngine.marginT + FarmLayoutEngine.barnH + FarmLayoutEngine.frameB
+            cols: layout.cols, rows: max(layout.rows, layout.requiredRows),
+            requiredRows: layout.requiredRows
         )
     } else {
         normalized = layout
     }
 
-    let dirt = FarmDirt.dirtCells(layout: normalized)
-    // `decorate` already emits the barn as its first tiles, in composite order with
-    // every scenery layer after it — spec's "barn" and "scenery" draw-order steps are
-    // one call, not two.
-    let scenery = FarmScenery.decorate(layout: normalized, dirt: dirt)
-
-    var furniture: [SceneryTile] = []
     var signs: [(rect: CGRect, image: CGImage?)] = []
     for pen in normalized.pens {
-        furniture.append(contentsOf: FarmPenFurniture.fenceTiles(for: pen))
-        furniture.append(contentsOf: FarmPenFurniture.troughTiles(for: pen))
         let rect = FarmPenFurniture.signRect(for: pen)
         let label = FarmPenFurniture.signLabel(for: pen)
         signs.append((rect, PixelText.image(label)))
@@ -200,11 +198,78 @@ func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
 
     let contentRows = max(normalized.rows, normalized.requiredRows)
     let contentCols = normalized.cols
-    let staticImage = renderStaticLayer(dirt: dirt, scenery: scenery, furniture: furniture,
-                                        cols: contentCols, rows: contentRows)
+
+    // Fix 3: the static layer (ground, dirt, barn/scenery, fences, troughs) is a pure
+    // function of pen geometry — (cwd, species, occupancy) per pen, in order, plus the
+    // window's cols/rows — and never of live session `state`. `MonitorViewModel`
+    // republishes `snapshot` roughly every 2s even when nothing about the farm's
+    // shape changed, which without this cache re-ran `FarmScenery.decorate`'s scatter/
+    // mushroom passes and ~1400+ `CGImage` blits in `renderStaticLayer` on every poll.
+    let key = StaticLayerKey(
+        cols: normalized.cols, rows: normalized.rows,
+        pens: normalized.pens.map {
+            StaticLayerKey.PenKey(cwd: $0.pen.cwd, species: $0.pen.species, count: $0.pen.processes.count)
+        }
+    )
+    let staticImage = StaticLayerCache.image(for: key) {
+        let dirt = FarmDirt.dirtCells(layout: normalized)
+        // `decorate` already emits the barn as its first tiles, in composite order
+        // with every scenery layer after it — spec's "barn" and "scenery" draw-order
+        // steps are one call, not two.
+        let scenery = FarmScenery.decorate(layout: normalized, dirt: dirt)
+
+        var furniture: [SceneryTile] = []
+        for pen in normalized.pens {
+            furniture.append(contentsOf: FarmPenFurniture.fenceTiles(for: pen))
+            furniture.append(contentsOf: FarmPenFurniture.troughTiles(for: pen))
+        }
+        return renderStaticLayer(dirt: dirt, scenery: scenery, furniture: furniture,
+                                 cols: contentCols, rows: contentRows)
+    }
 
     return BuiltScene(layout: normalized, staticImage: staticImage, signs: signs,
                        contentCols: contentCols, contentRows: contentRows)
+}
+
+/// Fix 3: cache key for the static layer. Deliberately excludes everything about live
+/// session state — `SessionState`, cpu/mem, pid — since none of it affects ground,
+/// dirt, scenery, fences, or troughs (spec §4.2-§4.4, §6). Keyed on the *raw*
+/// `cols`/`rows` fields that `FarmDirt`/`FarmScenery` actually clip against, not the
+/// derived `contentCols`/`contentRows` — two layouts that agree on `requiredRows` but
+/// differ in `rows` (e.g. one needing to scroll and one not) still clip differently
+/// and must not collide. `requiredRows` itself is a pure function of `(cols, rows,
+/// pens)`, so it doesn't need its own slot in the key.
+private struct StaticLayerKey: Equatable {
+    struct PenKey: Equatable {
+        let cwd: String
+        let species: AnimalSpecies
+        let count: Int
+    }
+    let cols: Int
+    let rows: Int
+    let pens: [PenKey]
+}
+
+/// Single-slot memo (not a growing dictionary): this app shows one farm view at a
+/// time, so there is only ever one "current" static layer worth keeping. A stale
+/// cached image would be a visible bug, so every field the layer actually depends on
+/// must be in `StaticLayerKey` — see its doc comment.
+private enum StaticLayerCache {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var lastKey: StaticLayerKey?
+    nonisolated(unsafe) private static var lastImage: CGImage?
+
+    static func image(for key: StaticLayerKey, build: () -> CGImage?) -> CGImage? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let lastKey, lastKey == key {
+            return lastImage
+        }
+        let image = build()
+        lastKey = key
+        lastImage = image
+        return image
+    }
 }
 
 /// Flattens ground + dirt + barn/scenery + fences/troughs into one offscreen bitmap, in
@@ -244,9 +309,13 @@ private func renderStaticLayer(dirt: Set<TilePoint>, scenery: [SceneryTile], fur
 
 // MARK: - Per-frame drawing
 
-/// One sprite in the depth-sorted draw list: an animal or the farmer (spec §5.4's
-/// baseline y-sort, extended to the farmer per the brief — he has no `AnimalPlacement`
-/// of his own, but participates in the same sort and gets the same shadow treatment).
+/// One sprite in the depth-sorted draw list: an animal or the fixed tile-0103 prop
+/// beside the barn door (kept as `farmer` below for naming continuity with mock7.py —
+/// spec §5.4's baseline y-sort, extended to it per the brief — it has no
+/// `AnimalPlacement` of its own, but participates in the same sort and gets the same
+/// shadow treatment). It isn't actually a character: 0103 renders as a grey-framed
+/// wooden fixture (a window or cabinet), not a person — see the note above where it's
+/// placed, below.
 struct Sprite {
     let by: Int
     let x: Int, y: Int
@@ -280,11 +349,14 @@ func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
         }
     }
 
-    // The farmer (tile 0103): spec §6.1 lists him, no task placed him. mock7.py:484-485
-    // appends him to the y-sorted draw list right after the animals — same sort key
-    // convention, same shadow treatment, drawn at a fixed spot by the barn door. `x, y`
-    // here are already the sprite's top-left (not a baseline) per mock7.py; only the
-    // sort key uses the baseline-style `+ 18`.
+    // Tile 0103: spec §6.1 lists a "character by the door for scale and life", but
+    // 0103 is not a character — it renders as a grey-framed wooden fixture (a window
+    // or cabinet). The code faithfully ports mock7.py:484, so this is the spec's prose
+    // that's wrong, not the asset choice; the asset pack simply has no door-side
+    // character sprite. mock7.py:484-485 appends it to the y-sorted draw list right
+    // after the animals — same sort key convention, same shadow treatment, drawn at a
+    // fixed spot by the barn door. `x, y` here are already the sprite's top-left (not
+    // a baseline) per mock7.py; only the sort key uses the baseline-style `+ 18`.
     if let barnX = scene.layout.barnX, let barnY = scene.layout.barnY, let farmer = FarmAssets.tile(103) {
         let fx = (barnX + FarmLayoutEngine.barnW - 1) * 16 + 2
         let fy = (barnY + FarmLayoutEngine.barnH) * 16 + 2
@@ -317,7 +389,7 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
 
     ctx.scaleBy(x: CGFloat(scale), y: CGFloat(scale))
 
-    // 6. Animals (+ the farmer): one y-sort, shadows first (as one pass, matching
+    // 6. Animals (+ the tile-0103 barn-door fixture): one y-sort, shadows first (as one pass, matching
     // mock7.py compositing the whole shadow layer before any sprite), then the sprites.
     let sprites = collectSprites(scene: scene, time: time)
     let shadowColor = Color(red: 32.0 / 255, green: 62.0 / 255, blue: 34.0 / 255, opacity: 0.31)
@@ -383,7 +455,12 @@ struct FarmView: View {
                 let contentHeight = max(geo.size.height, CGFloat(scene.contentRows) * tile)
 
                 ScrollView(.vertical, showsIndicators: true) {
-                    TimelineView(.animation) { context in
+                    // The fastest thing on screen is the 6fps walk cycle (bounce is
+                    // 2Hz, the pulse 1.2Hz) — `.animation` alone redraws at 60-120Hz
+                    // even when every animal is idle/frozen, which spec §5.1 says is
+                    // the common case. Throttling to 12Hz loses nothing visible and
+                    // cuts redraws 5-10x for a scene that's usually motionless.
+                    TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { context in
                         Canvas { ctx, size in
                             draw(scene: scene, scale: scale,
                                  time: context.date.timeIntervalSinceReferenceDate,
@@ -403,6 +480,10 @@ struct FarmView: View {
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity)
         }
-        .frame(minWidth: 420, minHeight: 320)
+        // Spec §2.4's own 1x minimum width: with the barn on its own row (Fix 2), the
+        // worst realistic pen (8 of the largest species, penW=23) needs
+        // 23 + marginL(4) + marginR(4) = 31 columns = 496px at 1x. Below this, a pen
+        // could clip past the right margin.
+        .frame(minWidth: 496, minHeight: 320)
     }
 }

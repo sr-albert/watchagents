@@ -100,29 +100,36 @@ enum FarmDirt {
                 dirt.insert(cell)
             }
 
-            // Gate threshold: the strip of dirt connecting the gate to its lane.
-            switch placed.gate {
-            case .south:
-                // South-gated pens are bottom-aligned to their row, so the row's
-                // bottom edge — and thus the lane below it — is exactly `y + h`.
-                let laneY = placed.y + placed.h
-                for yy in (placed.y + placed.h - 1)..<laneY {
-                    dirt.insert(TilePoint(x: gx - 1, y: yy))
-                    dirt.insert(TilePoint(x: gx, y: yy))
-                }
-            case .north:
-                if let laneY = layout.laneYs.last {
-                    let start = laneY + FarmLayoutEngine.laneH
-                    let end = placed.y + 1
-                    if start < end {
-                        for yy in start..<end {
-                            dirt.insert(TilePoint(x: gx - 1, y: yy))
-                            dirt.insert(TilePoint(x: gx, y: yy))
+            // Gate threshold: the strip of dirt connecting the gate to its lane. Only
+            // meaningful when a lane actually exists — a single-row layout's lone pen
+            // gates south (Fix 1) onto open ground, not a lane (mock7.py:114's
+            // `lane = None`), so this whole step is skipped for it, exactly as
+            // mock7.py's `if lane is not None:` skips it. Without this guard a
+            // single-row layout draws a 2-cell dirt nub under the gate leading nowhere.
+            if !layout.laneYs.isEmpty {
+                switch placed.gate {
+                case .south:
+                    // South-gated pens are bottom-aligned to their row, so the row's
+                    // bottom edge — and thus the lane below it — is exactly `y + h`.
+                    let laneY = placed.y + placed.h
+                    for yy in (placed.y + placed.h - 1)..<laneY {
+                        dirt.insert(TilePoint(x: gx - 1, y: yy))
+                        dirt.insert(TilePoint(x: gx, y: yy))
+                    }
+                case .north:
+                    if let laneY = layout.laneYs.last {
+                        let start = laneY + FarmLayoutEngine.laneH
+                        let end = placed.y + 1
+                        if start < end {
+                            for yy in start..<end {
+                                dirt.insert(TilePoint(x: gx - 1, y: yy))
+                                dirt.insert(TilePoint(x: gx, y: yy))
+                            }
                         }
                     }
+                case .none:
+                    break
                 }
-            case .none:
-                break
             }
         }
 

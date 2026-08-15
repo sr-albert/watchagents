@@ -90,9 +90,32 @@ final class FarmSceneSelectScaleAndLayoutTests: XCTestCase {
         XCTAssertEqual(layout.rows, 1)
     }
 
+    /// Fix 2 / spec §2.4: "never clip a pen." At the app's real `minWidth` (496, the
+    /// spec's own 1x minimum) and above, no pen — regardless of occupancy — should ever
+    /// be placed past the right margin. Before the barn-own-row fallback, a single
+    /// large pen alongside the barn could still run off the right edge at the window's
+    /// minimum width; this sweeps widths from 496 upward for both a lightly- and a
+    /// fully-occupied pen of the widest species (cow) and checks the layout actually
+    /// returned by `selectScaleAndLayout` — not a candidate it may have rejected.
+    func test_noPenExceedsRightMarginAcrossWidthsFromSpecMinimum() {
+        for count in [1, 8] {
+            let pens = makePens([(.cow, count)])
+            for width in stride(from: 496.0, through: 1600.0, by: 16.0) {
+                let (_, layout) = FarmScene.selectScaleAndLayout(pens: pens, width: CGFloat(width), height: 900)
+                for placed in layout.pens {
+                    XCTAssertLessThanOrEqual(
+                        placed.x + placed.w, layout.cols - FarmLayoutEngine.marginR,
+                        "count=\(count) width=\(width): pen right edge \(placed.x + placed.w) " +
+                        "exceeds margin at cols=\(layout.cols)")
+                }
+            }
+        }
+    }
+
     func test_emptyPens() {
         let (scale, layout) = FarmScene.selectScaleAndLayout(pens: [], width: 1200, height: 800)
-        // maxPenW=0, minCols = 0+barnW(7)+gap(2)+1+marginL(4)+marginR(4) = 18, requiredRows=0;
+        // maxPenW=0, minCols = 0+barnW(7)+gap(2)+1+marginL(4)+marginR(4) = 18; requiredRows
+        // is the empty farm's own minimum (marginT+barnH+frameB = 11), not 0 (Fix 6).
         // scale 3 gives winCols=25, winRows=16, both comfortably clear the empty-pens minimums.
         XCTAssertEqual(scale, 3)
         XCTAssertTrue(layout.pens.isEmpty)

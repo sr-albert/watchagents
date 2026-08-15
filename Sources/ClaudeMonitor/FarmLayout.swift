@@ -1,5 +1,8 @@
 import Foundation
 
+/// `.none` is currently unreachable — every real layout is either single-row (south
+/// gate onto open ground) or multi-row (north/south onto a lane) — kept only as a
+/// defensive default should a future layout shape produce a gateless pen.
 enum GateSide: Equatable { case north, south, none }
 
 struct PlacedPen: Equatable {
@@ -49,8 +52,13 @@ enum FarmLayoutEngine {
 
     static func layout(pens: [FarmPen], cols: Int, rows: Int) -> FarmLayout {
         guard !pens.isEmpty else {
+            // Fix 6: the empty-farm scene is still a barn + frame, not a blank canvas,
+            // so it has a real minimum height even with zero pens. Reporting it here
+            // (rather than leaving `requiredRows` at 0) lets `FarmScene` pick a scale
+            // that doesn't need to scroll just to show an empty farm.
             return FarmLayout(pens: [], laneYs: [], barnX: nil, barnY: nil,
-                               cols: cols, rows: rows, requiredRows: 0)
+                               cols: cols, rows: rows,
+                               requiredRows: marginT + barnH + frameB)
         }
 
         let avail = cols - marginL - marginR
@@ -61,10 +69,21 @@ enum FarmLayoutEngine {
             return ($0, size.w, size.h)
         }
 
+        // Spec §2.4: "never clip a pen"; if 1x still fails on width, move the barn to
+        // its own row (recovers BARN_W+GAP+1 columns). Tested against the *widest* pen
+        // overall, not just row 0's actual occupant — row 0 is the tightest row (its
+        // budget is reduced by the barn's slot) so this is the binding constraint
+        // regardless of which row the widest pen actually lands in.
+        let maxPenW = sized.map { $0.w }.max() ?? 0
+        let barnOwnRow = barnW + gap + 1 + maxPenW > avail
+
         // -------------------------------------------------------------- row packing
         var packedRows: [[(pen: FarmPen, w: Int, h: Int)]] = []
         var currentRow: [(pen: FarmPen, w: Int, h: Int)] = []
-        var curW = barnW + gap + 1   // row 0 starts with the barn's slot consumed
+        // Row 0 starts with the barn's slot consumed, unless the barn had to move to
+        // its own row above the pens, in which case every row (including row 0) gets
+        // the full width budget.
+        var curW = barnOwnRow ? 0 : barnW + gap + 1
 
         for item in sized {
             // The wrap test must run even when the row is empty: otherwise the first
@@ -96,11 +115,15 @@ enum FarmLayoutEngine {
 
         var placedItems: [PlacedItem] = []
         var rowBands: [(y: Int, h: Int)] = []
-        var y = marginT
+        // When the barn has its own row, reserve BARN_H rows for it plus `gap` rows
+        // before the first pen row. `FarmDirt` draws the barn's ground apron
+        // unconditionally for 2 rows below it (== `gap`), so that apron fills this
+        // reserved band exactly instead of leaving a dead strip of bare grass.
+        var y = marginT + (barnOwnRow ? barnH + gap : 0)
 
         for (rowIndex, row) in packedRows.enumerated() {
             let rowH = row.map { $0.h }.max() ?? 0
-            var x = marginL + (rowIndex == 0 ? barnW + gap + 1 : 0)
+            var x = marginL + (rowIndex == 0 && !barnOwnRow ? barnW + gap + 1 : 0)
             for item in row {
                 // Bottom-aligned within the row: different pen heights then produce a
                 // ragged top edge, which is a large part of what stops the scene
@@ -120,7 +143,14 @@ enum FarmLayoutEngine {
         let requiredRows = y - laneH + frameB
 
         let barnX = marginL
-        let barnY = rowBands.isEmpty ? nil : rowBands[0].y + rowBands[0].h - barnH
+        let barnY: Int?
+        if rowBands.isEmpty {
+            barnY = nil
+        } else if barnOwnRow {
+            barnY = marginT
+        } else {
+            barnY = rowBands[0].y + rowBands[0].h - barnH
+        }
 
         // -------------------------------------------------------------- gate assignment
         let rowCount = packedRows.count
@@ -131,7 +161,11 @@ enum FarmLayoutEngine {
             } else if item.rowIndex > 0 {
                 gate = .north
             } else {
-                gate = .none
+                // Fix 1: mock7.py:114 — a lone row (rowCount == 1) still gates south,
+                // it just has no lane on the other side (`lane = None`). The pen still
+                // needs a break in its fence ring; `FarmDirt` is what skips drawing a
+                // threshold onto a lane that doesn't exist.
+                gate = .south
             }
             let gateX = item.x + item.w / 2
             return PlacedPen(pen: item.pen, x: item.x, y: item.y, w: item.w, h: item.h,

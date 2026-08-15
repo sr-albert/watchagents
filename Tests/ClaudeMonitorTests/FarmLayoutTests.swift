@@ -70,7 +70,8 @@ final class FarmLayoutTests: XCTestCase {
         XCTAssertEqual(layout.laneYs.count, max(0, rowCount(of: layout) - 1),
                        "a lane exists only between two real rows")
         if rowCount(of: layout) == 1 {
-            XCTAssertEqual(layout.pens[0].gate, .none, "single-row layouts have no lane to gate onto")
+            XCTAssertEqual(layout.pens[0].gate, .south,
+                           "single-row layouts still gate south (mock7.py:114), even with no lane on the other side")
         }
     }
 
