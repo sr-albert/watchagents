@@ -34,6 +34,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: DropdownView(viewModel: viewModel, overloadSettings: viewModel.overloadSettings))
+
+        // WindowGroup(id: "farm") auto-opens a window at launch by default — there's
+        // no launch-suppression API for WindowGroup pre-macOS 15. This app is a
+        // menu-bar-only utility (LSUIElement, no Dock icon); the farm window must
+        // only appear when the user explicitly opens it via "Open Farm 🌾". Close
+        // whatever SwiftUI auto-opened, right after launch, before the user can see it.
+        DispatchQueue.main.async {
+            NSApp.windows.forEach { $0.close() }
+        }
     }
 
     private func updateStatusItemTitle() {
