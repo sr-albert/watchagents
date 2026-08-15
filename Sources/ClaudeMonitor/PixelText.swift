@@ -50,6 +50,7 @@ enum PixelText {
         ctx.setAllowsFontSubpixelPositioning(false)
         ctx.setShouldSubpixelPositionFonts(false)
         ctx.setAllowsFontSubpixelQuantization(false)
+        ctx.setShouldSubpixelQuantizeFonts(false)
 
         let attr = NSAttributedString(string: s, attributes: [
             .font: font,
@@ -66,6 +67,9 @@ enum PixelText {
 
     static func truncate(_ s: String, maxPx: Int) -> String {
         if measure(s) <= maxPx { return s }
+        // A budget too small for even the ellipsis can't be honoured by any non-empty
+        // string; return empty rather than silently overflowing the caller's box.
+        if measure("…") > maxPx { return "" }
         var out = s
         while !out.isEmpty && measure(out + "…") > maxPx {
             out.removeLast()

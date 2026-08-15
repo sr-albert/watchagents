@@ -50,6 +50,16 @@ final class PixelTextTests: XCTestCase {
         XCTAssertEqual(PixelText.truncate("NFQ", maxPx: 200), "NFQ")
     }
 
+    func test_truncateNeverExceedsTheBudget_evenWhenAbsurdlySmall() {
+        // A budget under one ellipsis-width has no honourable non-empty answer;
+        // returning "…" anyway would silently overflow whatever box the caller sized.
+        for maxPx in 0...20 {
+            let out = PixelText.truncate("DOTFILES", maxPx: maxPx)
+            XCTAssertLessThanOrEqual(PixelText.measure(out), maxPx,
+                                     "truncate overflowed at maxPx=\(maxPx): \"\(out)\"")
+        }
+    }
+
     func test_descendersAreNotClipped() throws {
         // plateH=12 clipped the Q descender and rendered NFQ as NEO. The glyph box
         // must be tall enough that a Q differs from an O.
