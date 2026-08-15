@@ -15,8 +15,8 @@ enum SessionStateBadge {
 struct DropdownView: View {
     @ObservedObject var viewModel: MonitorViewModel
     @ObservedObject var overloadSettings: OverloadSettings
+    var onOpenFarm: () -> Void = {}
     @StateObject private var loginItem = LoginItemManager()
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -37,7 +37,7 @@ struct DropdownView: View {
                 }
             }
             Button("Open Farm 🌾") {
-                openWindow(id: "farm")
+                onOpenFarm()
             }
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
