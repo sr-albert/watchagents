@@ -8,23 +8,23 @@ struct FarmPen: Equatable {
 }
 
 enum FarmGrouping {
+    /// Pens and their animals are ordered deterministically (by cwd, then by pid)
+    /// rather than by the order processes arrive in. `ps aux` returns matching
+    /// processes in a different order on nearly every poll, so preserving arrival
+    /// order made the whole grid reshuffle every refresh — pens visibly jumping
+    /// between positions twice a second.
     static func pens(from processes: [ClaudeProcess]) -> [FarmPen] {
-        var order: [String] = []
         var groups: [String: [ClaudeProcess]] = [:]
-
         for process in processes {
-            if groups[process.cwd] == nil {
-                order.append(process.cwd)
-            }
             groups[process.cwd, default: []].append(process)
         }
 
-        return order.map { cwd in
+        return groups.keys.sorted().map { cwd in
             FarmPen(
                 cwd: cwd,
                 label: URL(fileURLWithPath: cwd).lastPathComponent,
                 species: AnimalAssignment.species(forCWD: cwd),
-                processes: groups[cwd] ?? []
+                processes: (groups[cwd] ?? []).sorted { $0.pid < $1.pid }
             )
         }
     }
