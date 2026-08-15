@@ -131,4 +131,47 @@ final class SessionStateTrackerTests: XCTestCase {
         let states = tracker.states(for: reused, now: t0.addingTimeInterval(Thresholds.overloadConfirmWindow + 3), basis: .cpu)
         XCTAssertEqual(states[7], .active)
     }
+
+    func test_overloadedViaMemWhileCPUIsIdle() {
+        let tracker = SessionStateTracker()
+        let t0 = Date()
+
+        let memHeavy = ProcessSnapshot(
+            processes: [ClaudeProcess(pid: 9, cpu: 0, mem: 30)],
+            cpuTotal: 0, memTotal: 30, sessionCount: 1
+        )
+        _ = tracker.states(for: memHeavy, now: t0, basis: .both)
+        let states = tracker.states(for: memHeavy, now: t0.addingTimeInterval(Thresholds.overloadConfirmWindow + 1), basis: .both)
+        XCTAssertEqual(states[9], .overloaded)
+    }
+
+    func test_frozenResetsToActiveOnNewCPUActivity_thenIdleNotFrozen() {
+        let tracker = SessionStateTracker()
+        let t0 = Date()
+
+        let idle = ProcessSnapshot(
+            processes: [ClaudeProcess(pid: 11, cpu: 0, mem: 1)],
+            cpuTotal: 0, memTotal: 1, sessionCount: 1
+        )
+        _ = tracker.states(for: idle, now: t0, basis: .both)
+        let frozenStates = tracker.states(for: idle, now: t0.addingTimeInterval(Thresholds.frozenDuration + 1), basis: .both)
+        XCTAssertEqual(frozenStates[11], .frozen)
+
+        // CPU activity resumes — the idle streak must clear, not just happen to be nil-on-first-tick.
+        let busy = ProcessSnapshot(
+            processes: [ClaudeProcess(pid: 11, cpu: 50, mem: 1)],
+            cpuTotal: 50, memTotal: 1, sessionCount: 1
+        )
+        let activeStates = tracker.states(for: busy, now: t0.addingTimeInterval(Thresholds.frozenDuration + 2), basis: .both)
+        XCTAssertEqual(activeStates[11], .active)
+
+        // A subsequent idle tick must restart the idle-duration clock from zero, not treat
+        // the process as still "long idle" from before the CPU activity interrupted it.
+        let idleAgain = ProcessSnapshot(
+            processes: [ClaudeProcess(pid: 11, cpu: 0, mem: 1)],
+            cpuTotal: 0, memTotal: 1, sessionCount: 1
+        )
+        let idleAgainStates = tracker.states(for: idleAgain, now: t0.addingTimeInterval(Thresholds.frozenDuration + 3), basis: .both)
+        XCTAssertEqual(idleAgainStates[11], .idle)
+    }
 }
