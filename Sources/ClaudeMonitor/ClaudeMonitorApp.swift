@@ -5,7 +5,7 @@ struct ClaudeMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        Window("Farm", id: "farm") {
+        WindowGroup(id: "farm") {
             FarmView(viewModel: appDelegate.viewModel)
         }
         // `Settings` never shows a window for an `LSUIElement` app; kept as the

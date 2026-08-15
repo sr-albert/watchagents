@@ -39,7 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // no launch-suppression API for WindowGroup pre-macOS 15. This app is a
         // menu-bar-only utility (LSUIElement, no Dock icon); the farm window must
         // only appear when the user explicitly opens it via "Open Farm 🌾". Close
-        // whatever SwiftUI auto-opened, right after launch, before the user can see it.
+        // whatever SwiftUI auto-opened, right after launch, before the user can see
+        // it — filtered to windows whose identifier starts with "farm" specifically,
+        // since closing ALL windows here would also hide the status bar item.
         DispatchQueue.main.async {
             NSApp.windows
                 .filter { $0.identifier?.rawValue.hasPrefix("farm") == true }
