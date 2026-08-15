@@ -14,9 +14,15 @@ struct AnimalPlacement: Equatable {
     let badgeTile: Int?
 }
 
-/// A per-channel multiplicative tint. `r == g == b == a == 1` means "draw as-is".
+/// Per-pixel colour transform: `out = src * multiplier + (255 - src) * lift`, per
+/// channel, alpha multiplied. The `lift` term exists because spec §5.3's overloaded red
+/// (`r' = r + (255-r)*amt`) is a lerp toward white, which a multiplier alone cannot
+/// express — with multiply-only, dark pixels never redden and the cue mostly vanishes on
+/// the Holstein's black patches.
 struct AnimalTint: Equatable {
     let r, g, b, a: Double
+    /// Lerp-toward-255 amount for the red channel. Zero for every state except overloaded.
+    var lift: Double = 0
 }
 
 /// Spec `docs/farm-design-spec.md` §3.4 (slot lattice), §5.2-5.4 (state cues, exact
@@ -178,7 +184,7 @@ enum FarmAnimalPlacer {
             //   b' = b*(1 - amt*0.9)
             // alpha unchanged — overloaded must stay opaque, only colour pulses.
             let amt = 0.225 * (1 - cos(2 * Double.pi * 1.2 * time))
-            return AnimalTint(r: 1.0, g: 1.0 - amt * 0.8, b: 1.0 - amt * 0.9, a: 1.0)
+            return AnimalTint(r: 1.0, g: 1.0 - amt * 0.8, b: 1.0 - amt * 0.9, a: 1.0, lift: amt)
         }
     }
 }

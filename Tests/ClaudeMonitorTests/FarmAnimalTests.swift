@@ -121,4 +121,19 @@ final class FarmAnimalTintTests: XCTestCase {
             .map { FarmAnimalPlacer.tint(for: .overloaded, time: $0).g }
         XCTAssertGreaterThan(samples.max()! - samples.min()!, 0.1, "the pulse is flat")
     }
+
+    func test_onlyOverloadedLiftsTowardRed() {
+        for state in [SessionState.idle, .active, .frozen] {
+            XCTAssertEqual(FarmAnimalPlacer.tint(for: state, time: 0.3).lift, 0, accuracy: 0.0001,
+                           "\(state) must not lift the red channel")
+        }
+    }
+
+    func test_overloadedLiftOscillatesAcrossTheSpecRange() {
+        let lifts = stride(from: 0.0, to: 1.0, by: 0.02)
+            .map { FarmAnimalPlacer.tint(for: .overloaded, time: $0).lift }
+        XCTAssertGreaterThanOrEqual(lifts.min()!, -0.0001)
+        XCTAssertLessThanOrEqual(lifts.max()!, 0.4501, "spec §5.3 caps amt at 0.45")
+        XCTAssertGreaterThan(lifts.max()! - lifts.min()!, 0.3, "the pulse should traverse most of its range")
+    }
 }
