@@ -156,7 +156,7 @@ private func tintCacheKey(spriteKey: String, state: SessionState, tint: AnimalTi
 /// 60 times a second for a busy farm; instead that whole stack is rendered once into
 /// `staticImage` here, and the per-frame closure just blits it and then draws the
 /// handful of things that actually change (animals, their tints, sign plates).
-private struct BuiltScene {
+struct BuiltScene {
     let layout: FarmLayout
     let staticImage: CGImage?
     let signs: [(rect: CGRect, image: CGImage?)]
@@ -164,7 +164,7 @@ private struct BuiltScene {
     let contentRows: Int
 }
 
-private func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
+func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
     // `FarmLayoutEngine.layout` reports no barn at all when there are no pens (there's
     // nothing to bottom-align a row to). Spec: the empty state must still be a farm —
     // grass, barn, woodland — not a blank window. Stand the barn near the top margin
@@ -242,52 +242,12 @@ private func renderStaticLayer(dirt: Set<TilePoint>, scenery: [SceneryTile], fur
     return ctx.makeImage()
 }
 
-/// Picks the scale (spec §1/§2.4) by trying 3, 2, 1 in order: at each candidate, lay the
-/// real pens out against that scale's window-in-tiles and check the §2.4 fit rule via
-/// `FarmScene.scale`. A bigger scale means fewer available columns, which means *more*
-/// row-wrapping, not less — so each candidate needs its own real layout, not one
-/// computed at a different scale.
-private func selectScaleAndLayout(pens: [FarmPen], width: CGFloat, height: CGFloat) -> (scale: Int, layout: FarmLayout) {
-    guard width > 0, height > 0 else {
-        return (1, FarmLayoutEngine.layout(pens: pens, cols: 1, rows: 1))
-    }
-
-    for s in [3, 2, 1] {
-        let winCols = Int(width) / (16 * s)
-        let winRows = Int(height) / (16 * s)
-        guard winCols > 0, winRows > 0 else { continue }
-        let layout = FarmLayoutEngine.layout(pens: pens, cols: winCols, rows: winRows)
-        let maxPenW = layout.pens.map(\.w).max() ?? 0
-        let minCols = maxPenW + FarmLayoutEngine.barnW + FarmLayoutEngine.gap + 1
-            + FarmLayoutEngine.marginL + FarmLayoutEngine.marginR
-        // Test this candidate directly rather than via `FarmScene.scale(...) == s`:
-        // `requiredRows` shrinks as `winCols` grows (fewer columns wrap pens into more
-        // rows), so re-running `FarmScene.scale` with *this* candidate's looser
-        // `requiredRows` can report a bigger scale than the one actually under test —
-        // which would skip over a smaller scale that genuinely fits.
-        if winCols >= minCols && winRows >= layout.requiredRows {
-            return (s, layout)
-        }
-    }
-
-    // Nothing fit without scrolling, even at scale 1. Spec §2.4: never clip a pen —
-    // scroll instead. Re-run the layout with its own required row count so the
-    // woodland/frame bounds (which read `layout.rows`) cover the full scrollable area.
-    let winCols = max(1, Int(width) / 16)
-    let winRows = max(1, Int(height) / 16)
-    var layout = FarmLayoutEngine.layout(pens: pens, cols: winCols, rows: winRows)
-    if layout.requiredRows > layout.rows {
-        layout = FarmLayoutEngine.layout(pens: pens, cols: winCols, rows: layout.requiredRows)
-    }
-    return (1, layout)
-}
-
 // MARK: - Per-frame drawing
 
 /// One sprite in the depth-sorted draw list: an animal or the farmer (spec §5.4's
 /// baseline y-sort, extended to the farmer per the brief — he has no `AnimalPlacement`
 /// of his own, but participates in the same sort and gets the same shadow treatment).
-private struct Sprite {
+struct Sprite {
     let by: Int
     let x: Int, y: Int
     let image: CGImage
@@ -296,7 +256,7 @@ private struct Sprite {
     let badge: (x: Int, y: Int, tile: Int)?
 }
 
-private func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
+func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
     var sprites: [Sprite] = []
 
     for pen in scene.layout.pens {
@@ -416,7 +376,7 @@ struct FarmView: View {
         VStack(spacing: 0) {
             GeometryReader { geo in
                 let pens = FarmGrouping.pens(from: viewModel.snapshot.processes)
-                let (scale, rawLayout) = selectScaleAndLayout(pens: pens, width: geo.size.width, height: geo.size.height)
+                let (scale, rawLayout) = FarmScene.selectScaleAndLayout(pens: pens, width: geo.size.width, height: geo.size.height)
                 let scene = buildScene(pens: pens, layout: rawLayout)
                 let tile = CGFloat(16 * scale)
                 let contentWidth = max(geo.size.width, CGFloat(scene.contentCols) * tile)
