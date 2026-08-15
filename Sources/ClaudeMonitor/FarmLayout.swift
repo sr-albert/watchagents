@@ -81,6 +81,11 @@ enum FarmLayoutEngine {
         if !currentRow.isEmpty {
             packedRows.append(currentRow)
         }
+        // mock7.py:84 — `rows = [r for r in rows if r]`. Without this, a wrap that
+        // fires on an empty row (e.g. the very first pen alone doesn't fit the row-0
+        // budget) leaves a phantom empty row ahead of the real one, corrupting row
+        // indices, `barnY`, `laneYs`, and gate assignment downstream.
+        packedRows = packedRows.filter { !$0.isEmpty }
 
         // -------------------------------------------------------- vertical placement
         struct PlacedItem {

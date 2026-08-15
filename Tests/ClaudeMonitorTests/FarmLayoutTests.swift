@@ -10,6 +10,12 @@ private func pen(_ path: String, _ species: AnimalSpecies, _ count: Int) -> Farm
     )
 }
 
+/// Number of distinct rows in a layout, counted by distinct pen bottom edges
+/// (`y + h`) — a stand-in for a row index the struct doesn't expose.
+private func rowCount(of layout: FarmLayout) -> Int {
+    Set(layout.pens.map { $0.y + $0.h }).count
+}
+
 final class FarmPenSizeTests: XCTestCase {
     func test_footprintsMatchSpec() {
         XCTAssertEqual(FarmLayoutEngine.footprint(for: .cow).w, 5)
@@ -46,17 +52,26 @@ final class FarmPenSizeTests: XCTestCase {
 }
 
 final class FarmLayoutTests: XCTestCase {
-    func test_wrapsTheFirstPenWhenItCannotFitBesideTheBarn() {
-        // Regression: the wrap test must run even when the row is empty. If it is
-        // guarded by `row.notEmpty`, the first pen of row 0 lands past the barn
-        // regardless of window width and runs off the right edge.
-        let layout = FarmLayoutEngine.layout(
-            pens: [pen("/a", .cow, 2)],   // 13 wide
-            cols: 24, rows: 40            // too narrow for barn(7)+gap(2)+1+13+margins
-        )
+    func test_firstPenSitsBesideTheBarnWhenTheWindowIsWideEnough() {
+        // cols must clear the §2.4 fit rule: 13 + barnW(7) + gap(2) + 1 + margins(8) = 31.
+        let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 40, rows: 40)
         let placed = layout.pens[0]
-        XCTAssertLessThanOrEqual(placed.x + placed.w, 24 - 4,
-                                 "pen overflows the right margin")
+        XCTAssertEqual(placed.x, FarmLayoutEngine.marginL + FarmLayoutEngine.barnW + FarmLayoutEngine.gap + 1,
+                       "row 0 must reserve the barn's slot")
+        XCTAssertLessThanOrEqual(placed.x + placed.w, 40 - FarmLayoutEngine.marginR)
+    }
+
+    func test_narrowWindowDegradesWithoutCorruptingTheLayout() {
+        // Below the fit rule the layout can't be pretty, but it must never be corrupt:
+        // no phantom lanes, no off-canvas barn, no gate on a single-row layout.
+        let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 24, rows: 40)
+        XCTAssertEqual(layout.pens.count, 1, "pens are never dropped")
+        if let by = layout.barnY { XCTAssertGreaterThanOrEqual(by, 0, "barn placed off-canvas") }
+        XCTAssertEqual(layout.laneYs.count, max(0, rowCount(of: layout) - 1),
+                       "a lane exists only between two real rows")
+        if rowCount(of: layout) == 1 {
+            XCTAssertEqual(layout.pens[0].gate, .none, "single-row layouts have no lane to gate onto")
+        }
     }
 
     func test_penOrderMatchesInputOrder() {
@@ -111,6 +126,30 @@ final class FarmLayoutTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(placed.x, 4)
             XCTAssertLessThanOrEqual(placed.x + placed.w, 52 - 4)
         }
+    }
+
+    func test_gateAndGateXOnMultiRowLayout() {
+        let pens = (0..<8).map { pen("/p\($0)", .cow, 1) }
+        let layout = FarmLayoutEngine.layout(pens: pens, cols: 46, rows: 40)
+        let bottoms = Set(layout.pens.map { $0.y + $0.h })
+        XCTAssertGreaterThan(bottoms.count, 1, "expected a multi-row layout for this fixture")
+        let lastBottom = bottoms.max()!
+        for placed in layout.pens {
+            let bottom = placed.y + placed.h
+            if bottom == lastBottom {
+                XCTAssertEqual(placed.gate, .north, "last row gates north onto the lane above")
+            } else {
+                XCTAssertEqual(placed.gate, .south, "non-last rows gate south onto the lane below")
+            }
+            XCTAssertEqual(placed.gateX, placed.x + placed.w / 2)
+        }
+    }
+
+    func test_barnXAndBarnYOnNormalLayout() {
+        let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 1)], cols: 40, rows: 40)
+        XCTAssertEqual(layout.barnX, FarmLayoutEngine.marginL)
+        let row0Bottom = layout.pens.map { $0.y + $0.h }.max()!
+        XCTAssertEqual(layout.barnY, row0Bottom - FarmLayoutEngine.barnH)
     }
 
     func test_pensNeverOverlapEachOther() {
