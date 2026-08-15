@@ -5,6 +5,7 @@ struct ClaudeProcess: Equatable {
     let cpu: Double
     let mem: Double
     var cwd: String = "(unknown)"
+    var state: SessionState = .idle
 }
 
 struct ProcessSnapshot: Equatable {

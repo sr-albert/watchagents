@@ -47,4 +47,10 @@ final class ProcessMonitorTests: XCTestCase {
         XCTAssertEqual(snapshot.sessionCount, 2)
         XCTAssertEqual(snapshot.processes.count, 3)
     }
+
+    func test_claudeProcess_defaultsStateToIdle() {
+        let process = ClaudeProcess(pid: 42, cpu: 1.0, mem: 1.0)
+
+        XCTAssertEqual(process.state, .idle)
+    }
 }
