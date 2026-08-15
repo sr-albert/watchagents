@@ -65,3 +65,7 @@ See `Scripts/build-app.sh` for how the release `.app` bundle is assembled (ad-ho
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+The bundled pixel art and font are third-party assets under their own licences
+(Kenney CC0, LPC farm animals CC-BY 3.0 by Daniel Eddeland, Silkscreen OFL) — see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
