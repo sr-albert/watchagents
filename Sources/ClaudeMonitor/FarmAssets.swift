@@ -56,19 +56,3 @@ enum FarmAssets {
         subdirectory: "Resources/fonts"
     )
 }
-
-// `AnimalSpecies` still has seven cases at this point but only four have sprite sheets.
-// This extension is deliberately total, so the gap shows up as a `nil` sheet (which
-// `test_loadsEveryAnimalSheet` catches) rather than as a compile error. Task 2 removes
-// the three artless cases and moves this property onto the enum itself.
-extension AnimalSpecies {
-    var assetName: String {
-        switch self {
-        case .cow: return "cow"
-        case .pig: return "pig"
-        case .sheep: return "sheep"
-        case .chicken: return "chicken"
-        default: return "__missing__"
-        }
-    }
-}

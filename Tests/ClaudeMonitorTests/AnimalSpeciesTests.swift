@@ -33,8 +33,15 @@ final class AnimalAssignmentTests: XCTestCase {
         // Pins real computed output against the palette in Global Constraints order.
         // A future palette reorder that changes any of these must be a conscious
         // decision, not an accidental reshuffle — that's what this test guards.
-        XCTAssertEqual(AnimalAssignment.species(forCWD: "/Users/albert/Projects/watchagents"), .cow)
-        XCTAssertEqual(AnimalAssignment.species(forCWD: "/Users/albert/Projects/vestio-admin"), .chicken)
-        XCTAssertEqual(AnimalAssignment.species(forCWD: "/Users/albert/Projects/sadbits"), .pig)
+        XCTAssertEqual(AnimalAssignment.species(forCWD: "/Users/albert/Projects/watchagents"), .sheep)
+        XCTAssertEqual(AnimalAssignment.species(forCWD: "/Users/albert/Projects/vestio-admin"), .pig)
+        XCTAssertEqual(AnimalAssignment.species(forCWD: "/Users/albert/Projects/sadbits"), .chicken)
+    }
+
+    func test_everySpeciesHasBothSpriteSheets() {
+        for species in AnimalSpecies.allCases {
+            XCTAssertNotNil(FarmAssets.animalSheet(species, .walk), "\(species) walk sheet missing")
+            XCTAssertNotNil(FarmAssets.animalSheet(species, .eat), "\(species) eat sheet missing")
+        }
     }
 }

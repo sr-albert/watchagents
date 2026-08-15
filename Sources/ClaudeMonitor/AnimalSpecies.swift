@@ -1,13 +1,23 @@
 import Foundation
 
+/// The four species we have sprite sheets for. Deliberately not "every farm animal" —
+/// `species(forCWD:)` maps projects into this set, so adding a case with no art in
+/// `Resources/animals/` would leave some projects unrenderable.
 enum AnimalSpecies: String, CaseIterable {
     case cow = "🐄"
     case pig = "🐖"
     case sheep = "🐑"
     case chicken = "🐔"
-    case horse = "🐴"
-    case llama = "🦙"
-    case goat = "🐐"
+
+    /// Filename stem of this species' sprite sheets.
+    var assetName: String {
+        switch self {
+        case .cow: return "cow"
+        case .pig: return "pig"
+        case .sheep: return "sheep"
+        case .chicken: return "chicken"
+        }
+    }
 }
 
 enum AnimalAssignment {

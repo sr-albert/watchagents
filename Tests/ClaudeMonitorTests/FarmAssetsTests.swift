@@ -22,7 +22,6 @@ final class FarmAssetsTests: XCTestCase {
     }
 
     func test_loadsEveryAnimalSheet() {
-        XCTExpectFailure("three species have no art until Task 2 cuts the enum")
         for species in AnimalSpecies.allCases {
             for action in [AnimalAction.walk, .eat] {
                 XCTAssertNotNil(
