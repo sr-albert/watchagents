@@ -42,6 +42,18 @@ struct AnimalView: View {
         .padding(10)
         .background(Circle().fill(AnimalOverlay.tint(for: state)))
         .onAppear { isAnimating = true }
+        .onChange(of: state) { _ in
+            // The repeatForever loop kicked off in .onAppear keeps using the
+            // animation config it was given at that moment; `.animation(_, value:)`
+            // only reapplies on changes to `isAnimating`, not to `state`. Toggling
+            // `isAnimating` off then back on inside `withAnimation` forces a fresh
+            // transition using the *new* state's `stateAnimation`/`bobOffset`, so a
+            // persisting session's motion actually updates when its state changes.
+            isAnimating = false
+            withAnimation(stateAnimation) {
+                isAnimating = true
+            }
+        }
     }
 
     private var bobOffset: CGFloat {
