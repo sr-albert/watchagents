@@ -20,48 +20,77 @@ enum AnimalOverlay {
     }
 }
 
-private struct AnimatedIcon: View {
-    let species: AnimalSpecies
-    let state: SessionState
+/// The visual transform applied to one animal at one instant.
+struct AnimalMotion: Equatable {
+    var offsetX: CGFloat = 0
+    var offsetY: CGFloat = 0
+    var scale: CGFloat = 1
+    var rotation: Double = 0
+}
 
-    @State private var isAnimating = false
-
-    var body: some View {
-        Text(species.rawValue)
-            .font(.system(size: 40))
-            .grayscale(state == .frozen ? 0.7 : 0)
-            .offset(y: bobOffset)
-            .animation(stateAnimation, value: isAnimating)
-            .onAppear { isAnimating = true }
-    }
-
-    private var bobOffset: CGFloat {
+/// Motion is a pure function of (state, clock, per-animal phase) rather than a
+/// `repeatForever` animation. A repeating animation has to be torn down and re-armed
+/// whenever the state changes — which is what the earlier `.id(state)` remount did, and
+/// it made every animal visibly snap back to rest on each transition. Sampling a
+/// continuous function has no such seam: a state change simply picks a different curve
+/// from the next frame onward. It is also directly unit-testable, unlike an `Animation`.
+enum AnimalMotionModel {
+    /// Each state gets a qualitatively different motion, not the same bob at a
+    /// different speed — at a glance you should be able to tell breathing from
+    /// hopping from juddering without reading the badge.
+    static func motion(for state: SessionState, time: Double, phase: Double) -> AnimalMotion {
         switch state {
-        case .idle: return isAnimating ? -4 : 0
-        case .active: return isAnimating ? -8 : 0
-        case .overloaded: return isAnimating ? 3 : -3
-        case .frozen: return 0
+        case .idle:
+            // Slow breathing: scale only, no travel. Calm enough to ignore.
+            let breath = sin(time * 2 * .pi / 3.0 + phase)
+            return AnimalMotion(scale: 1 + 0.035 * breath)
+
+        case .active:
+            // Hopping: abs() gives the bounce a floor to land on, instead of the
+            // symmetric sine that made "active" read as a slow float.
+            let hop = abs(sin(time * 2 * .pi / 0.7 + phase))
+            return AnimalMotion(offsetY: -9 * hop, scale: 1 + 0.05 * hop)
+
+        case .overloaded:
+            // Fast lateral judder plus a rotational wobble — a real shake, where the
+            // previous version just oscillated vertically like a faster bob.
+            let shake = sin(time * 2 * .pi / 0.09 + phase)
+            let wobble = sin(time * 2 * .pi / 0.13 + phase)
+            return AnimalMotion(offsetX: 2.5 * shake, rotation: 4 * wobble)
+
+        case .frozen:
+            return AnimalMotion()
         }
     }
 
-    private var stateAnimation: Animation? {
-        switch state {
-        case .idle: return .easeInOut(duration: 1.5).repeatForever(autoreverses: true)
-        case .active: return .easeInOut(duration: 0.3).repeatForever(autoreverses: true)
-        case .overloaded: return .easeInOut(duration: 0.175).repeatForever(autoreverses: true)
-        case .frozen: return nil
-        }
+    /// Spreads animals out of lockstep so a pen doesn't pulse as one block.
+    /// Derived from the pid so an animal's phase is stable across frames.
+    static func phase(forPID pid: Int) -> Double {
+        Double(pid % 1000) / 1000 * 2 * .pi
     }
 }
 
 struct AnimalView: View {
     let species: AnimalSpecies
     let state: SessionState
+    let pid: Int
+    let time: Double
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            AnimatedIcon(species: species, state: state)
-                .id(state)
+        let motion = AnimalMotionModel.motion(
+            for: state,
+            time: time,
+            phase: AnimalMotionModel.phase(forPID: pid)
+        )
+
+        return ZStack(alignment: .topTrailing) {
+            Text(species.rawValue)
+                .font(.system(size: 40))
+                .grayscale(state == .frozen ? 0.7 : 0)
+                .opacity(state == .frozen ? 0.65 : 1)
+                .scaleEffect(motion.scale)
+                .rotationEffect(.degrees(motion.rotation))
+                .offset(x: motion.offsetX, y: motion.offsetY)
             if let badge = AnimalOverlay.badge(for: state) {
                 Text(badge)
                     .font(.system(size: 16))
@@ -75,6 +104,7 @@ struct AnimalView: View {
 
 struct PenView: View {
     let pen: FarmPen
+    let time: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -85,11 +115,17 @@ struct PenView: View {
                 .textCase(.uppercase)
             HStack(spacing: 10) {
                 ForEach(pen.processes, id: \.pid) { process in
-                    AnimalView(species: pen.species, state: process.state)
+                    AnimalView(
+                        species: pen.species,
+                        state: process.state,
+                        pid: process.pid,
+                        time: time
+                    )
                 }
             }
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.green.opacity(0.12))
@@ -106,13 +142,18 @@ struct FarmView: View {
     @ObservedObject var viewModel: MonitorViewModel
 
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220))], spacing: 16) {
-                ForEach(FarmGrouping.pens(from: viewModel.snapshot.processes), id: \.cwd) { pen in
-                    PenView(pen: pen)
+        // One clock for the whole farm, sampled per frame and handed down, rather than
+        // a timer per animal. Animals stay out of lockstep via their pid-derived phase.
+        TimelineView(.animation) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 16) {
+                    ForEach(FarmGrouping.pens(from: viewModel.snapshot.processes), id: \.cwd) { pen in
+                        PenView(pen: pen, time: time)
+                    }
                 }
+                .padding()
             }
-            .padding()
         }
         .background(
             LinearGradient(
@@ -121,6 +162,6 @@ struct FarmView: View {
                 endPoint: .bottom
             )
         )
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(minWidth: 420, minHeight: 320)
     }
 }
