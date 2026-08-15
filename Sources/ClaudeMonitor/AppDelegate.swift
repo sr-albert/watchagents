@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popover = NSPopover()
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: DropdownView(viewModel: viewModel))
+        popover.contentViewController = NSHostingController(rootView: DropdownView(viewModel: viewModel, overloadSettings: viewModel.overloadSettings))
     }
 
     private func updateStatusItemTitle() {

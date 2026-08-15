@@ -1,8 +1,20 @@
 import SwiftUI
 import AppKit
 
+enum SessionStateBadge {
+    static func emoji(for state: SessionState) -> String {
+        switch state {
+        case .idle: return "🌾"
+        case .active: return "🏃"
+        case .overloaded: return "🔥"
+        case .frozen: return "🥶"
+        }
+    }
+}
+
 struct DropdownView: View {
     @ObservedObject var viewModel: MonitorViewModel
+    @ObservedObject var overloadSettings: OverloadSettings
     @StateObject private var loginItem = LoginItemManager()
 
     var body: some View {
@@ -18,6 +30,11 @@ struct DropdownView: View {
                 get: { loginItem.isEnabled },
                 set: { loginItem.setEnabled($0) }
             ))
+            Picker("Overload trigger", selection: $overloadSettings.basis) {
+                ForEach(OverloadBasis.allCases, id: \.self) { basis in
+                    Text(basis.rawValue.uppercased()).tag(basis)
+                }
+            }
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
@@ -43,7 +60,7 @@ struct DropdownView: View {
                 }
                 ForEach(snapshot.processes, id: \.pid) { proc in
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("PID \(proc.pid)  CPU \(proc.cpu, specifier: "%.1f")%  MEM \(proc.mem, specifier: "%.1f")%")
+                        Text("\(SessionStateBadge.emoji(for: proc.state)) PID \(proc.pid)  CPU \(proc.cpu, specifier: "%.1f")%  MEM \(proc.mem, specifier: "%.1f")%")
                             .font(.system(.caption, design: .monospaced))
                         Text("📂 \(proc.cwd)")
                             .font(.caption2)
