@@ -41,7 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // only appear when the user explicitly opens it via "Open Farm 🌾". Close
         // whatever SwiftUI auto-opened, right after launch, before the user can see it.
         DispatchQueue.main.async {
-            NSApp.windows.forEach { $0.close() }
+            NSApp.windows
+                .filter { $0.identifier?.rawValue.hasPrefix("farm") == true }
+                .forEach { $0.close() }
         }
     }
 
