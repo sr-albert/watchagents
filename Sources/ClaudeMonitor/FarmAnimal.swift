@@ -105,6 +105,42 @@ enum FarmAnimalPlacer {
         return (Int((Double(dir) * 3 * bump).rounded()), Int(bump.rounded()))
     }
 
+    /// Traverse speed, px/s. Slow enough to read as grazing-pace walking rather than
+    /// pacing, and close enough to the 6fps walk cycle's stride that the feet do not
+    /// visibly skate.
+    private static let walkSpeed = 12.0
+
+    /// Spec §5.2 ("walk cycle, traverses the pen") and §5.6 ("`active` is a continuous
+    /// traverse of the pen"). The walk cycle shipped without this: the legs moved and the
+    /// animal stood still.
+    ///
+    /// A triangle wave, deliberately not a sine. A sine eases to a stop at each end while
+    /// the legs keep cycling at a constant 6fps, which reads as slipping on ice; constant
+    /// speed matches the constant-rate animation.
+    ///
+    /// `travel` is the room inside the animal's own lattice slot, so nobody ever steps
+    /// onto a neighbour's ground and §7's "no pathfinding needed" keeps holding. Pens are
+    /// sized snugly (`FarmLayoutEngine.footprint` allows a lone cow ~15px of slack), so
+    /// this is about a tile of ground, not a lap. That still satisfies §5.6, whose
+    /// discriminator against idle is amplitude and duty cycle: `idleWander` is ±3px at an
+    /// 18% duty cycle, this is 5x the amplitude and never at rest.
+    private static func activeTraverse(pid: Int, travel: Int,
+                                       time: Double) -> (dx: Int, facingRight: Bool) {
+        guard travel > 0 else { return (0, true) }
+
+        let period = 2 * Double(travel) / walkSpeed          // out and back
+        let phase = Double(StableHash.pick(1000, pid, 0x55)) / 1000.0 * period
+        // `truncatingRemainder` keeps the dividend's sign, and a negative `t` would put
+        // the animal outside its slot rather than merely at the wrong phase.
+        var t = (time + phase).truncatingRemainder(dividingBy: period)
+        if t < 0 { t += period }
+
+        let u = t / period
+        let ramp = u < 0.5 ? u * 2 : (1 - u) * 2             // 0 -> 1 -> 0
+        let offset = Double(travel) * (ramp - 0.5)           // centred on the slot
+        return (Int(offset.rounded()), u < 0.5)
+    }
+
     static func place(pen: PlacedPen, time: Double) -> [AnimalPlacement] {
         let species = pen.pen.species
         let processes = pen.pen.processes
@@ -137,6 +173,9 @@ enum FarmAnimalPlacer {
             let sheet: AnimalAction
             let frame: Int
             var badgeTile: Int?
+            // Which way the animal is drawn facing. Fixed per slot for every state
+            // except `.active`, which overrides it to match its direction of travel.
+            var facingRow = spriteRow(slotIndex: i)
 
             switch process.state {
             case .idle:
@@ -152,11 +191,21 @@ enum FarmAnimalPlacer {
                 by -= off + 2
                 bx += 4
             case .active:
-                // walk sheet, forward, overlaps the bottom rail.
+                // walk sheet, forward, overlaps the bottom rail, traversing its slot
+                // (spec §5.2). The static `bx += off` the other walking states use is
+                // dropped here: it is a nudge off the slot's centre, and an animal that
+                // swings symmetrically about that centre is the thing that keeps it clear
+                // of its neighbours. Facing follows the direction of travel — walking left
+                // in the right-facing row is moonwalking, and reads as broken rather than
+                // merely still.
                 sheet = .walk
                 frame = walkFrame(slotIndex: i, time: time)
                 by += off
-                bx += off
+                let travel = max(0, Int(slot) - w - 4)   // 4px of air between sprite boxes
+                let (tdx, facingRight) = activeTraverse(pid: process.pid, travel: travel,
+                                                        time: time)
+                bx += tdx
+                facingRow = facingRight ? 3 : 1
             case .overloaded:
                 // walk sheet + 1px integer bounce, forward, bomb badge (0105).
                 // 0095 (red plate) is reserved for the future needs-attention state.
@@ -172,7 +221,7 @@ enum FarmAnimalPlacer {
 
             return AnimalPlacement(
                 pid: process.pid, species: species, state: process.state,
-                sheet: sheet, row: spriteRow(slotIndex: i), frame: frame,
+                sheet: sheet, row: facingRow, frame: frame,
                 bx: bx, by: by, badgeTile: badgeTile
             )
         }

@@ -157,3 +157,139 @@ final class FarmAnimalWanderTests: XCTestCase {
                        "the animal never revisits its earlier positions — it is drifting")
     }
 }
+
+/// Spec §5.2 ("walk cycle, traverses the pen"), §5.6 ("`active` is a continuous traverse
+/// of the pen") and §7 ("the active walk is a fixed traverse — a pure function of
+/// `(pid, time)`"). The walk cycle shipped without the traverse: the legs moved and the
+/// animal did not.
+final class FarmAnimalTraverseTests: XCTestCase {
+    /// 0.17s, not a round number: the traverse period is `2 * travel / 12`, which for a
+    /// cow is exactly 2.5s. A 0.25s step divides that evenly and samples the same ten
+    /// phases forever, which understates the range and invents stalls at the turns.
+    private func track(_ pen: PlacedPen, index: Int = 0,
+                       through seconds: Double = 120) -> [AnimalPlacement] {
+        stride(from: 0.0, through: seconds, by: 0.17).map {
+            FarmAnimalPlacer.place(pen: pen, time: $0)[index]
+        }
+    }
+
+    /// §5.6 defines the discriminator against idle as **amplitude and duty cycle**, not
+    /// the presence of motion — so this measures against the idle wander rather than a
+    /// magic number. It has to: pens are sized snugly around their animals (a lone cow
+    /// has 15px of slack in a 96px interior), so "traverses the pen" is about a tile of
+    /// ground, and a fixed threshold would either be unreachable or prove nothing.
+    func test_anActiveAnimalCoversFarMoreGroundThanAnIdleOne() {
+        let active = track(placedPen([.active])).map(\.bx)
+        let idle = track(placedPen([.idle])).map(\.bx)
+        let activeRange = active.max()! - active.min()!
+        let idleRange = idle.max()! - idle.min()!
+
+        XCTAssertGreaterThan(activeRange, 12, "active is walking on the spot — the whole bug")
+        XCTAssertGreaterThan(activeRange, idleRange * 3,
+                             "active (\(activeRange)px) barely out-ranges idle (\(idleRange)px)")
+    }
+
+    /// The other half of §5.6's discriminator. Idle spends most of its cycle anchored;
+    /// active is a continuous traverse, so it should be in motion nearly every sample.
+    func test_activeIsMovingAlmostAlways_andIdleIsMostlyAtRest() {
+        func dutyCycle(_ state: SessionState) -> Double {
+            let xs = track(placedPen([state])).map(\.bx)
+            let moved = zip(xs, xs.dropFirst()).filter { $0 != $1 }.count
+            return Double(moved) / Double(xs.count - 1)
+        }
+        XCTAssertGreaterThan(dutyCycle(.active), 0.8)
+        XCTAssertLessThan(dutyCycle(.idle), 0.4)
+    }
+
+    func test_anActiveAnimalStaysInsideThePenAtEveryOccupancy() {
+        for count in 1...8 {
+            for species in [AnimalSpecies.cow, .chicken] {
+                let pen = placedPen(Array(repeating: .active, count: count), species: species)
+                let (w, _) = FarmAnimalPlacer.spriteSize(for: species)
+                for index in 0..<count {
+                    for a in track(pen, index: index, through: 60) {
+                        XCTAssertGreaterThanOrEqual(a.bx, (pen.x + 1) * 16,
+                                                    "\(species) \(count)x walked through the left rail")
+                        XCTAssertLessThanOrEqual(a.bx + w, (pen.x + pen.w - 1) * 16,
+                                                 "\(species) \(count)x walked through the right rail")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Each animal traverses its own lattice slot, which is what lets §7 hold — "no
+    /// pathfinding needed". Two animals sharing ground would need collision handling the
+    /// spec rules out, and would read as one walking through the other.
+    func test_neighboursNeverWalkThroughEachOther() {
+        let pen = placedPen(Array(repeating: .active, count: 4))
+        let (w, _) = FarmAnimalPlacer.spriteSize(for: .cow)
+        let left = track(pen, index: 0, through: 60).map(\.bx)
+        let right = track(pen, index: 1, through: 60).map(\.bx)
+
+        for (l, r) in zip(left, right) {
+            XCTAssertLessThanOrEqual(l + w, r, "their sprite boxes overlap — one walked through the other")
+        }
+    }
+
+    /// An animal walking left in the right-facing row is moonwalking. This is the part
+    /// that reads as broken rather than merely still.
+    func test_theAnimalFacesTheWayItIsWalking() {
+        let samples = track(placedPen([.active]), through: 60)
+        var checked = 0
+        // Pairs that straddle a turn are skipped: the peak sits between the two samples,
+        // so the rounded x can still be rising after the animal has already turned, and
+        // the direction inferred from the pair is genuinely ambiguous. Every pair within
+        // one half-cycle is checked, which is what catches an inverted facing.
+        for (a, b) in zip(samples, samples.dropFirst()) where a.bx != b.bx && a.row == b.row {
+            XCTAssertEqual(b.row, b.bx > a.bx ? 3 : 1,
+                           "facing row \(b.row) while moving \(b.bx > a.bx ? "right" : "left")")
+            checked += 1
+        }
+        XCTAssertGreaterThan(checked, 100, "not enough movement sampled to prove anything")
+    }
+
+    /// It has to turn around, not walk off and clamp against the rail — a clamped animal
+    /// stands still with its legs going, which is the bug wearing a different hat.
+    func test_theTraverseTurnsRoundRatherThanPilingIntoTheRail() {
+        let xs = track(placedPen([.active]), through: 120).map(\.bx)
+        // Longest unbroken run at either extreme. A clamped walk parks there for many
+        // consecutive samples; a turn touches it and leaves, so runs stay short. Counting
+        // total visits instead would flag a perfectly good turn that happens often.
+        func longestRun(at value: Int) -> Int {
+            var best = 0, run = 0
+            for x in xs {
+                run = x == value ? run + 1 : 0
+                best = max(best, run)
+            }
+            return best
+        }
+        XCTAssertLessThanOrEqual(longestRun(at: xs.max()!), 3, "piling up against one end")
+        XCTAssertLessThanOrEqual(longestRun(at: xs.min()!), 3, "piling up against one end")
+    }
+
+    func test_theTraverseIsDeterministic() {
+        let pen = placedPen([.active, .active])
+        XCTAssertEqual(FarmAnimalPlacer.place(pen: pen, time: 17.5),
+                       FarmAnimalPlacer.place(pen: pen, time: 17.5))
+    }
+
+    /// Spec §5.2 gives `overloaded` "walk + 1px integer bounce" and does not say it
+    /// traverses: its cues are the red pulse, the bomb and the bounce, and a roaming
+    /// overloaded animal would blur the one distinction §5.6 rests on.
+    func test_overloadedStaysPut() {
+        let xs = track(placedPen([.overloaded]), through: 60).map(\.bx)
+        XCTAssertLessThanOrEqual(xs.max()! - xs.min()!, 2)
+    }
+
+    /// Two animals in one pen must not turn in lockstep — spec §5.1 wants ambient life,
+    /// and synchronised movement reads as a mechanism rather than a farm.
+    func test_penMatesAreOutOfPhase() {
+        let pen = placedPen([.active, .active])
+        let a = track(pen, index: 0, through: 60).map(\.bx)
+        let b = track(pen, index: 1, through: 60).map(\.bx)
+        let deltaA = zip(a, a.dropFirst()).map { $1 - $0 }
+        let deltaB = zip(b, b.dropFirst()).map { $1 - $0 }
+        XCTAssertNotEqual(deltaA, deltaB, "both animals move identically")
+    }
+}
