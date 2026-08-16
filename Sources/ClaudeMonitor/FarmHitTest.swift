@@ -56,7 +56,13 @@ enum FarmHitTest {
     /// behind it. `targets` arrives back-to-front (see `targets(from:)`), hence the
     /// reverse.
     static func pid(at point: CGPoint, in targets: [HitTarget]) -> Int? {
-        targets.reversed().first { $0.rect.contains(point) }?.pid
+        target(at: point, in: targets)?.pid
+    }
+
+    /// The whole target, for callers that need the animal's box and not just which session
+    /// it is — the detail card hangs off the top edge of this rect.
+    static func target(at point: CGPoint, in targets: [HitTarget]) -> HitTarget? {
+        targets.reversed().first { $0.rect.contains(point) }
     }
 
     /// Pen geometry is fixed for a given layout, so unlike `targets(from:)` this needs

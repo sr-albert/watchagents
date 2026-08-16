@@ -450,21 +450,8 @@ private func drawPlate(_ r: CGRect, text: CGImage?, into ctx: inout GraphicsCont
     }
 }
 
-/// Where the pointer/selection name plate hangs: same 15px-tall wooden sign as a pen's,
-/// centred over the animal and clear of the overloaded bomb badge, which already occupies
-/// the 16px directly above the sprite's top edge.
-private func namePlateRect(for sprite: Sprite, text: CGImage) -> CGRect {
-    let plateH: CGFloat = 15
-    let plateW = CGFloat(text.width) + 9
-    let bottom = CGFloat(sprite.y) - (sprite.badge == nil ? 4 : 20)
-    return CGRect(x: max(1, (CGFloat(sprite.shadowCenterX) - plateW / 2).rounded()),
-                  y: max(1, bottom - plateH),
-                  width: plateW, height: plateH)
-}
-
 private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSize,
-                  hoveredPID: Int?, selectedPID: Int?, doorsOpen: Bool,
-                  into ctx: inout GraphicsContext) {
+                  doorsOpen: Bool, into ctx: inout GraphicsContext) {
     // Leftover window space (the common case — window pixel size is rarely an exact
     // multiple of 16*scale) extends the ground fill; it never letterboxes.
     let grassBG = Color(red: 110.0 / 255, green: 190.0 / 255, blue: 90.0 / 255)
@@ -519,14 +506,10 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
         drawPlate(sign.rect, text: sign.image, into: &ctx)
     }
 
-    // 9. The pointer/selection name plate, on top of everything. Spec §5.1 keeps the
-    // resting scene quiet — state lives in posture, colour and motion — so a session's
-    // identity appears only for the one animal you are pointing at or have selected.
-    for s in sprites {
-        guard let pid = s.pid, pid == hoveredPID || pid == selectedPID else { continue }
-        guard let img = PixelText.image("PID \(pid)") else { continue }
-        drawPlate(namePlateRect(for: s, text: img), text: img, into: &ctx)
-    }
+    // 9. Nothing hangs over the animal here any more. The pointer used to raise a small
+    // wooden "PID nnnn" plate at exactly this spot; `FarmDetailCard` now sits there
+    // instead, and carries the pid along with everything else the plate could not fit.
+
 }
 
 // MARK: - View
@@ -550,6 +533,11 @@ struct FarmView: View {
     /// Whether the barn's doors are open, which is the same thing as whether the farmhouse
     /// modal is showing — the doors are the modal's only opening animation.
     @State private var houseOpen = false
+    /// The box of the animal the card belongs to, in 1x tile-pixel space, captured when it
+    /// was pointed at or clicked rather than read per frame. An active animal is walking,
+    /// and a card that chased it would jitter along at mouse-move rate and slide out from
+    /// under the pointer; anchoring it where you aimed is both steadier and easier to read.
+    @State private var cardRect: CGRect?
 
     /// Resolved live from the current snapshot rather than captured at hover or click
     /// time, so the card's numbers tick with the poll and the card dismisses itself when
@@ -657,10 +645,18 @@ struct FarmView: View {
                         draw(scene: scene, scale: scale,
                              time: context.date.timeIntervalSinceReferenceDate,
                              canvasSize: size,
-                             hoveredPID: hoveredPID, selectedPID: selectedPID,
                              doorsOpen: houseOpen, into: &ctx)
                     }
                     .frame(width: contentWidth, height: contentHeight)
+                    // Anchored to the animal, inside the scrolling content, so the card
+                    // stays with its subject rather than sitting in a corner you have to
+                    // look away to read.
+                    .overlay(alignment: .topLeading) {
+                        if let process = cardProcess, let rect = cardRect {
+                            anchoredCard(process, over: rect, scale: scale,
+                                         contentWidth: contentWidth)
+                        }
+                    }
                     // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
                     // tile-pixel space, so window points divide by `scale` before any
                     // hit test. `.local` keeps this correct once the view scrolls.
@@ -668,11 +664,15 @@ struct FarmView: View {
                         switch phase {
                         case .active(let point):
                             let p = farmPoint(point, scale: scale)
-                            let hit = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
+                            let target = FarmHitTest.target(at: p, in: LastDrawnFrame.targets())
                             // Only assign on a real transition: moving the pointer
                             // within one animal must not re-evaluate `body` at
                             // mouse-move rate.
-                            if hit != hoveredPID { hoveredPID = hit }
+                            if target?.pid != hoveredPID {
+                                hoveredPID = target?.pid
+                                if let target { cardRect = target.rect }
+                            }
+                            let hit = target?.pid
                             // Re-set on every event, not only on transitions:
                             // AppKit's own cursor rects reassert themselves as the
                             // pointer moves and would clobber a one-shot set.
@@ -713,7 +713,9 @@ struct FarmView: View {
                                 selectedPID = nil
                                 return
                             }
-                            selectedPID = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
+                            let target = FarmHitTest.target(at: p, in: LastDrawnFrame.targets())
+                            selectedPID = target?.pid
+                            if let target { cardRect = target.rect }
                         }
                     )
                 }
@@ -722,19 +724,44 @@ struct FarmView: View {
             // pen along row 0, so a card in the top-right corner would routinely cover
             // the very animal you just clicked. The last pen row is the one that runs
             // short, which makes the bottom-right the emptiest corner of the scene.
-            .overlay(alignment: .bottomTrailing) {
-                if let process = cardProcess {
-                    FarmDetailCard(
-                        process: process,
-                        onClose: FarmCardSelection.isDismissable(shown: process.pid,
-                                                                 pinned: selectedPID)
-                            ? { selectedPID = nil } : nil
-                    )
-                    .padding(12)
-                }
-            }
+
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// `FarmDetailCard`'s own fixed width, needed here to keep it on screen.
+    private static let cardWidth: CGFloat = 210
+    /// Only used to decide which side of the animal the card goes on. The real height is
+    /// whatever the content comes to; this is a deliberate over-estimate, so the card flips
+    /// below the animal slightly sooner than it strictly has to rather than one frame too
+    /// late, with its top row already cut off by the edge of the farm.
+    private static let cardHeightGuess: CGFloat = 190
+
+    /// The card, hung off the animal's own box. Positioned by overlaying a zero-size point
+    /// so the layout never needs the card's height: `.bottom` alignment puts the card
+    /// *above* the point, `.top` puts it below, and either way the card sizes itself.
+    private func anchoredCard(_ process: ClaudeProcess, over rect: CGRect, scale: Int,
+                              contentWidth: CGFloat) -> some View {
+        let s = CGFloat(scale)
+        let above = rect.minY * s > Self.cardHeightGuess
+        let y = above ? rect.minY * s - 6 : rect.maxY * s + 6
+        // Centred on the animal, then pulled back inside the farm: an animal against
+        // either edge would otherwise hang half its card off the side.
+        let half = Self.cardWidth / 2 + 4
+        let x = min(max(rect.midX * s, half), max(half, contentWidth - half))
+        let pinned = FarmCardSelection.isDismissable(shown: process.pid, pinned: selectedPID)
+
+        return Color.clear
+            .frame(width: 0, height: 0)
+            .overlay(alignment: above ? .bottom : .top) {
+                FarmDetailCard(process: process,
+                               onClose: pinned ? { selectedPID = nil } : nil)
+            }
+            .offset(x: x, y: y)
+            // A hover card is transparent to the pointer: it has nothing to click, and
+            // taking events would let it steal the hover from the animal holding it open.
+            // A pinned one has to accept them, or its close button is unreachable.
+            .allowsHitTesting(pinned)
     }
 
     private static let tabWidth: CGFloat = 14
