@@ -76,3 +76,66 @@ final class FarmHitTestTests: XCTestCase {
         XCTAssertEqual(targets[0].rect.midY, 53, accuracy: 0.001)
     }
 }
+
+private func placedPen(_ label: String, x: Int, y: Int, w: Int = 8, h: Int = 6) -> PlacedPen {
+    let cwd = "/Users/someone/code/\(label)"
+    let pen = FarmPen(cwd: cwd, label: label, species: .cow,
+                      processes: [ClaudeProcess(pid: 1, cpu: 0, mem: 0, cwd: cwd)])
+    return PlacedPen(pen: pen, x: x, y: y, w: w, h: h, gate: .south, gateX: x + w / 2)
+}
+
+final class FarmPenHitTestTests: XCTestCase {
+    func test_penIndex_returnsThePenUnderThePoint() {
+        let targets = FarmHitTest.penTargets(from: [
+            placedPen("alpha", x: 4, y: 3),
+            placedPen("beta", x: 20, y: 3),
+        ])
+
+        // Pen coordinates are tiles; hit testing happens in 1× pixels, 16 to the tile.
+        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: 6 * 16, y: 5 * 16), in: targets), 0)
+        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: 22 * 16, y: 5 * 16), in: targets), 1)
+    }
+
+    func test_penIndex_returnsNilOnOpenGround() {
+        let targets = FarmHitTest.penTargets(from: [placedPen("alpha", x: 4, y: 3)])
+
+        XCTAssertNil(FarmHitTest.penIndex(at: CGPoint(x: 40 * 16, y: 30 * 16), in: targets))
+    }
+
+    /// The name plate is nailed to the top rail and its upper edge clears the pen's own
+    /// rectangle. The hover region has to take in that overhang, or the `!` badge would
+    /// flicker off whenever the pointer strayed onto the top of the plate it sits on.
+    func test_penIndex_includesTheSignPlateOverhangingThePenTop() {
+        let pen = placedPen("alpha", x: 4, y: 3)
+        let targets = FarmHitTest.penTargets(from: [pen])
+        let sign = FarmPenFurniture.signRect(for: pen)
+        let penTop = CGFloat(pen.y * 16)
+
+        XCTAssertLessThan(sign.minY, penTop, "fixture assumes the plate overhangs the pen top")
+        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: sign.midX, y: sign.minY), in: targets), 0)
+        // ...and the padded box reaches above the plate itself, so the very top pixel
+        // row of the sign is not a miss.
+        XCTAssertLessThan(targets[0].rect.minY, sign.minY)
+    }
+
+    /// Opening the project modal is a click on the plate specifically — the rest of the
+    /// pen belongs to the animals, whose own hit test already owns those points.
+    func test_penSignIndex_hitsOnlyThePlate() {
+        let pen = placedPen("alpha", x: 4, y: 3)
+        let targets = FarmHitTest.penTargets(from: [pen])
+        let sign = FarmPenFurniture.signRect(for: pen)
+
+        XCTAssertEqual(FarmHitTest.penSignIndex(at: CGPoint(x: sign.midX, y: sign.midY), in: targets), 0)
+        // Middle of the pen body: inside the pen, but not on its plate.
+        XCTAssertNil(FarmHitTest.penSignIndex(at: CGPoint(x: 6 * 16, y: 5 * 16), in: targets))
+    }
+
+    /// The plate is 15px tall and can be narrow for a short project name, so it gets the
+    /// same minimum touch box as the smallest animals rather than its own new numbers.
+    func test_penSignTarget_isAtLeastTheMinimumTouchBox() {
+        let targets = FarmHitTest.penTargets(from: [placedPen("a", x: 4, y: 3)])
+
+        XCTAssertGreaterThanOrEqual(targets[0].signRect.width, FarmHitTest.minimumSize)
+        XCTAssertGreaterThanOrEqual(targets[0].signRect.height, FarmHitTest.minimumSize)
+    }
+}
