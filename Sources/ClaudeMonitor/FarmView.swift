@@ -561,9 +561,12 @@ struct FarmView: View {
                             }
                         }
                         // `onTapGesture` only reports a location on macOS 14; a
-                        // zero-distance drag gives one on 13. Trackpad and wheel scrolling
-                        // aren't drag gestures, so this doesn't compete with the ScrollView.
-                        .gesture(
+                        // zero-distance drag gives one on 13. `simultaneousGesture`, not
+                        // `gesture`: a zero-distance drag attached exclusively would
+                        // compete with the enclosing ScrollView for the event stream. The
+                        // translation guard below is what keeps an actual drag from
+                        // selecting anything.
+                        .simultaneousGesture(
                             DragGesture(minimumDistance: 0).onEnded { value in
                                 guard abs(value.translation.width) < 3,
                                       abs(value.translation.height) < 3 else { return }
@@ -573,7 +576,11 @@ struct FarmView: View {
                         )
                     }
                 }
-                .overlay(alignment: .topTrailing) {
+                // Bottom-trailing, not top: `FarmLayoutEngine` puts the barn and the first
+                // pen along row 0, so a card in the top-right corner would routinely cover
+                // the very animal you just clicked. The last pen row is the one that runs
+                // short, which makes the bottom-right the emptiest corner of the scene.
+                .overlay(alignment: .bottomTrailing) {
                     if let process = selectedProcess {
                         FarmDetailCard(process: process) { selectedPID = nil }
                             .padding(12)
