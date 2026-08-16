@@ -1,8 +1,10 @@
 # Farm Scene — Implementation Spec
 
 Source of truth for the renderer. All numbers are in **tiles** (16px) or **1× pixels**
-unless stated. Reference implementation: `scratchpad/mock7.py` — `render()` is this
-algorithm; `states.py` renders the state key.
+unless stated. Reference implementation: `docs/reference/mock7.py` — `render()` is this
+algorithm; `docs/reference/states.py` renders the state key. Both were written in a
+throwaway scratch directory and vendored here so the pointer survives the session that
+made it; they are documentation, not part of any build target.
 
 ---
 
@@ -477,13 +479,25 @@ crossroads, `0103` character by the door for scale and life.
 
 ### 6.2 Tree stands — the rule that makes scenery deliberate
 
-> **CORRECTION (2026-08-16).** An earlier version of this spec told you to tile
-> `0006 0007 0008` over `0018 0019 0020` as a "canopy band". **Do not build that.**
-> Those are forest-*interior* pieces: their dark outlines are drawn to continue into
-> neighbouring tiles. With open grass above them the top arcs dangle unattached and the
-> band reads as an upside-down cave ceiling with green stalactites. The user caught it
-> on sight. **Tiles `0006`–`0008`, `0018`–`0020`, `0009`–`0011` and `0021`–`0023` are
-> now unused anywhere in the design.**
+> **CORRECTION, SUPERSEDED (2026-08-16).** This spec twice recorded that the canopy
+> band tiled from `0006 0007 0008` over `0018 0019 0020` "reads upside down", and
+> retired those tiles as unusable forest-interior art. **That diagnosis was wrong.**
+> The band read upside down because *the renderer drew every tile in the static layer
+> upside down* — a y-axis flip in the cached-layer path, fixed in commit `0801ade`
+> ("Stop the static layer drawing every tile upside down"). Trees, canopy, barn and
+> grass were all inverted; the canopy band was simply the one place where inversion
+> produced a shape recognisable enough to notice.
+>
+> So: `0006`–`0008`, `0018`–`0020`, `0009`–`0011` and `0021`–`0023` are **not** known-bad
+> art. They are **untested since the flip fix** and currently unused. `docs/reference/
+> trees-fixed.png` is a post-fix render of the woodland and shows a correct forest frame.
+> Whether to restore the woodland — reverting `ac4f57b`, and possibly part of `370893b`
+> — is an open decision for the user, who has twice asked for *fewer* trees. Do not
+> restore it unprompted, and do not repeat the "bad art" diagnosis: the art was never
+> the problem.
+>
+> The rule below still stands on its own merits — dense stands of the 2-tall single
+> tree have an unambiguous silhouette regardless — and is what the code builds today.
 
 Woodland is built from **dense stands of the 2-tall single tree** — `0004` over `0016`
 (autumn: `0003` over `0015`) — at 1-tile spacing, drawn **back to front** so canopies
@@ -558,7 +572,7 @@ tree; `< 44` → a bush (`0005`/`0028`).
 | Frozen = 40% alpha + overgrown pen | Looks broken; misrepresents a common benign state (§0a) |
 | Desaturation for frozen | Fails on white species — sheep, chicken, Holstein |
 | Scattering individual trees sparsely to fill space | Confetti. Dense stands with trunk-only reservation instead (§6.2) |
-| **Canopy bands from `0006-0008`/`0018-0020`** | **Reads upside down — dangling outline arcs with open grass above. Removed entirely (§6.2)** |
+| ~~Canopy bands from `0006-0008`/`0018-0020`~~ | ~~Reads upside down~~ — **struck out: it was the renderer flip, not the art (`0801ade`). Unused but not rejected; see §6.2** |
 | Tile `0043` as a crop bed | It's grey-flecked gravel; reads as rubble on grass |
 | State-sorted animal slots | Teleports animals across the pen on every state flip |
 | Uniform value-noise for grass | Produced visible diagonal streaks; §4.1 form doesn't |

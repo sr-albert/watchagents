@@ -2,3 +2,7 @@
 .swiftpm/
 *.xcodeproj
 .DS_Store
+
+# 123MB of unused CC0 3D animal models, kept locally but not redistributed.
+# Delete or commit as you prefer — ignoring it just clears the status noise.
+assets/
