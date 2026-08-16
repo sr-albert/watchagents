@@ -283,14 +283,17 @@ private func renderStaticLayer(dirt: Set<TilePoint>, scenery: [SceneryTile], fur
     else { return nil }
     // CGContext's default device space is bottom-left-origin/y-up; every tile coordinate
     // in this codebase (FarmLayout, FarmDirt, FarmScenery...) is top-left-origin/y-down,
-    // matching mock7.py's PIL canvas. Flip once so `blitTile(x, y)` below can use those
-    // coordinates directly.
-    ctx.translateBy(x: 0, y: CGFloat(h))
-    ctx.scaleBy(x: 1, y: -1)
-
+    // matching mock7.py's PIL canvas. Converted per blit, in the `y` term below.
+    //
+    // Deliberately NOT by flipping the context with `scaleBy(x: 1, y: -1)`: that puts the
+    // rows in the right order but the CTM then applies to the tile bitmaps as well, so
+    // every tile lands in its correct cell drawn upside down. It is a quiet failure —
+    // ground and rails are near enough symmetric to look fine — and it cost two rewrites
+    // of the woodland, whose trees were flipped canopy-under-trunk, before anyone traced
+    // it back here rather than blaming the art.
     func blitTile(_ id: Int, _ x: Int, _ y: Int) {
         guard let image = FarmAssets.tile(id) else { return }
-        ctx.draw(image, in: CGRect(x: x * 16, y: y * 16, width: 16, height: 16))
+        ctx.draw(image, in: CGRect(x: x * 16, y: h - (y + 1) * 16, width: 16, height: 16))
     }
 
     for y in 0..<rows {

@@ -1,6 +1,18 @@
 import XCTest
 import SwiftUI
+import CoreGraphics
 @testable import ClaudeMonitor
+
+/// Normalises any `CGImage` into a 16x16 RGBA buffer so two tiles can be compared byte
+/// for byte regardless of the colour space or alpha layout they arrived in.
+private func tileBytes(_ image: CGImage) -> [UInt8] {
+    var data = [UInt8](repeating: 0, count: 16 * 16 * 4)
+    let ctx = CGContext(data: &data, width: 16, height: 16, bitsPerComponent: 8,
+                        bytesPerRow: 16 * 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+    return data
+}
 
 final class FarmViewSkeletonTests: XCTestCase {
     @MainActor
@@ -66,6 +78,42 @@ final class FarmViewSceneAssemblyTests: XCTestCase {
 
         XCTAssertEqual(sprites.compactMap(\.pid).sorted(), procs.map(\.pid).sorted())
         XCTAssertEqual(sprites.filter { $0.pid == nil }.count, 1)
+    }
+
+    /// The static layer must blit each tile the way it was drawn. `renderStaticLayer`
+    /// flips its coordinate system so tile rows run top-down, and that flip applies to
+    /// the image content too unless it is undone per blit — which put every tile in the
+    /// right cell upside down. It cost two rewrites of the woodland before anyone
+    /// noticed, because the symptom looks exactly like bad art.
+    ///
+    /// Checked on tile 0094, the beehive beside the barn: strongly asymmetric top to
+    /// bottom, and at a position fixed by `barnTiles`.
+    func test_staticLayerBlitsTilesTheRightWayUp() throws {
+        let procs = (0..<4).map { ClaudeProcess(pid: 100 + $0, cpu: 0, mem: 0, cwd: "/p\($0)") }
+        let pens = FarmGrouping.pens(from: procs)
+        let layout = FarmLayoutEngine.layout(pens: pens, cols: 46, rows: 28)
+        let scene = buildScene(pens: pens, layout: layout)
+
+        let image = try XCTUnwrap(scene.staticImage)
+        let bx = try XCTUnwrap(scene.layout.barnX)
+        let by = try XCTUnwrap(scene.layout.barnY)
+        let hiveX = bx + FarmLayoutEngine.barnW + 1
+        let hiveY = by + FarmLayoutEngine.barnH - 1
+        let drawn = try XCTUnwrap(image.cropping(
+            to: CGRect(x: hiveX * 16, y: hiveY * 16, width: 16, height: 16)))
+
+        // Only the tile's own opaque pixels: the cell in the scene has grass composited
+        // behind the hive, which the source tile leaves transparent.
+        let inScene = tileBytes(drawn)
+        let source = tileBytes(try XCTUnwrap(FarmAssets.tile(94)))
+        var compared = 0
+        for i in stride(from: 0, to: source.count, by: 4) where source[i + 3] == 255 {
+            compared += 1
+            XCTAssertEqual(Array(inScene[i..<(i + 3)]), Array(source[i..<(i + 3)]),
+                           "tile 0094 differs from the source at byte \(i) — the static "
+                           + "layer is not blitting it as it was drawn")
+        }
+        XCTAssertGreaterThan(compared, 100, "the fixture found no hive to compare")
     }
 
     func test_collectSprites_includesFarmerExactlyWhenBarnExists() {
