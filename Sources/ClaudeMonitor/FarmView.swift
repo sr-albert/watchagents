@@ -459,28 +459,8 @@ private func namePlateRect(for sprite: Sprite, text: CGImage) -> CGRect {
                   width: plateW, height: plateH)
 }
 
-/// The `!` chip that appears at the end of a pen's name plate while the pointer is on
-/// that pen. Drawn as ink-on-wood inverted into a filled chip, so it reads as a control
-/// rather than as more label text. Geometry comes from `FarmPenFurniture` because the
-/// hit test uses the same rect.
-private func drawInfoBadge(_ r: CGRect, into ctx: inout GraphicsContext) {
-    ctx.fill(Path(CGRect(x: r.minX - 1, y: r.minY - 1, width: r.width + 2, height: r.height + 2)),
-             with: .color(FarmPalette.woodLo))
-    ctx.fill(Path(r), with: .color(FarmPalette.ink))
-    guard let img = PixelText.image("!") else { return }
-    // Whole-pixel origin for the same reason `drawPlate` rounds: a half-pixel offset
-    // under `.interpolation(.none)` resamples glyph columns inconsistently.
-    let tx = (r.minX + (r.width - CGFloat(img.width)) / 2).rounded()
-    let ty = (r.minY + (r.height - CGFloat(img.height)) / 2).rounded()
-    ctx.drawLayer { layer in
-        layer.addFilter(.colorMultiply(FarmPalette.woodHi))
-        layer.draw(pixelImage(img), in: CGRect(x: tx, y: ty, width: CGFloat(img.width), height: CGFloat(img.height)))
-    }
-}
-
 private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSize,
-                  hoveredPID: Int?, selectedPID: Int?, hoveredPen: Int?,
-                  into ctx: inout GraphicsContext) {
+                  hoveredPID: Int?, selectedPID: Int?, into ctx: inout GraphicsContext) {
     // Leftover window space (the common case — window pixel size is rarely an exact
     // multiple of 16*scale) extends the ground fill; it never letterboxes.
     let grassBG = Color(red: 110.0 / 255, green: 190.0 / 255, blue: 90.0 / 255)
@@ -531,13 +511,6 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
         guard let img = PixelText.image("PID \(pid)") else { continue }
         drawPlate(namePlateRect(for: s, text: img), text: img, into: &ctx)
     }
-
-    // 10. The project `!` chip, for the one pen the pointer is on. Same reasoning as
-    // step 9: an affordance on all twenty pens at once is the wall of text the farm
-    // exists to replace.
-    if let hoveredPen, scene.layout.pens.indices.contains(hoveredPen) {
-        drawInfoBadge(FarmPenFurniture.infoBadgeRect(for: scene.layout.pens[hoveredPen]), into: &ctx)
-    }
 }
 
 // MARK: - View
@@ -551,7 +524,6 @@ struct FarmView: View {
     @ObservedObject var viewModel: MonitorViewModel
     @State private var hoveredPID: Int?
     @State private var selectedPID: Int?
-    @State private var hoveredPen: Int?
     /// Keyed by working directory, not by pen index: the pen list is rebuilt from every
     /// snapshot and a project that exits shifts every index after it, which would leave
     /// an open modal silently showing a different project.
@@ -595,7 +567,7 @@ struct FarmView: View {
                                  time: context.date.timeIntervalSinceReferenceDate,
                                  canvasSize: size,
                                  hoveredPID: hoveredPID, selectedPID: selectedPID,
-                                 hoveredPen: hoveredPen, into: &ctx)
+                                 into: &ctx)
                         }
                         .frame(width: contentWidth, height: contentHeight)
                         // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
@@ -610,11 +582,15 @@ struct FarmView: View {
                                 // within one animal must not re-evaluate `body` at
                                 // mouse-move rate.
                                 if hit != hoveredPID { hoveredPID = hit }
-                                let pen = FarmHitTest.penIndex(at: p, in: LastDrawnFrame.penTargets())
-                                if pen != hoveredPen { hoveredPen = pen }
+                                // Re-set on every event, not only on transitions:
+                                // AppKit's own cursor rects reassert themselves as the
+                                // pointer moves and would clobber a one-shot set.
+                                let onFence = FarmHitTest.penFenceIndex(
+                                    at: p, in: LastDrawnFrame.penTargets()) != nil
+                                FarmCursor.set(interactable: hit != nil || onFence)
                             case .ended:
                                 if hoveredPID != nil { hoveredPID = nil }
-                                if hoveredPen != nil { hoveredPen = nil }
+                                FarmCursor.reset()
                             }
                         }
                         // `onTapGesture` only reports a location on macOS 14; a
@@ -628,10 +604,10 @@ struct FarmView: View {
                                 guard abs(value.translation.width) < 3,
                                       abs(value.translation.height) < 3 else { return }
                                 let p = farmPoint(value.location, scale: scale)
-                                // The plate wins over the animals. It overlaps the pen's
-                                // top rail, where an animal can be standing, and someone
-                                // aiming at the `!` chip means the project.
-                                if let pen = FarmHitTest.penSignIndex(at: p, in: LastDrawnFrame.penTargets()) {
+                                // The fence wins over the animals. It is the pen's
+                                // outline, an animal can stand against the inside of it,
+                                // and someone aiming at a rail means the project.
+                                if let pen = FarmHitTest.penFenceIndex(at: p, in: LastDrawnFrame.penTargets()) {
                                     modalCWD = scene.layout.pens[pen].pen.cwd
                                     selectedPID = nil
                                     return

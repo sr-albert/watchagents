@@ -85,86 +85,59 @@ private func placedPen(_ label: String, x: Int, y: Int, w: Int = 8, h: Int = 6) 
 }
 
 final class FarmPenHitTestTests: XCTestCase {
-    func test_penIndex_returnsThePenUnderThePoint() {
-        let targets = FarmHitTest.penTargets(from: [
-            placedPen("alpha", x: 4, y: 3),
-            placedPen("beta", x: 20, y: 3),
-        ])
+    /// A pen laid out at tile (4,3), 8x6 tiles — so its rectangle in 1x pixels is
+    /// (64, 48, 128, 96) and its fence ring is the outermost 16px band of that.
+    private let pen = placedPen("alpha", x: 4, y: 3)
 
-        // Pen coordinates are tiles; hit testing happens in 1× pixels, 16 to the tile.
-        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: 6 * 16, y: 5 * 16), in: targets), 0)
-        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: 22 * 16, y: 5 * 16), in: targets), 1)
-    }
-
-    func test_penIndex_returnsNilOnOpenGround() {
-        let targets = FarmHitTest.penTargets(from: [placedPen("alpha", x: 4, y: 3)])
-
-        XCTAssertNil(FarmHitTest.penIndex(at: CGPoint(x: 40 * 16, y: 30 * 16), in: targets))
-    }
-
-    /// The name plate is nailed to the top rail and its upper edge clears the pen's own
-    /// rectangle. The hover region has to take in that overhang, or the `!` badge would
-    /// flicker off whenever the pointer strayed onto the top of the plate it sits on.
-    func test_penIndex_includesTheSignPlateOverhangingThePenTop() {
-        let pen = placedPen("alpha", x: 4, y: 3)
+    func test_penFenceIndex_hitsTheRailsOfTheRing() {
         let targets = FarmHitTest.penTargets(from: [pen])
-        let sign = FarmPenFurniture.signRect(for: pen)
-        let penTop = CGFloat(pen.y * 16)
 
-        XCTAssertLessThan(sign.minY, penTop, "fixture assumes the plate overhangs the pen top")
-        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: sign.midX, y: sign.minY), in: targets), 0)
-        // ...and the padded box reaches above the plate itself, so the very top pixel
-        // row of the sign is not a miss.
-        XCTAssertLessThan(targets[0].rect.minY, sign.minY)
+        // Top rail, then left rail.
+        XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: 128, y: 52), in: targets), 0)
+        XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: 68, y: 90), in: targets), 0)
     }
 
-    /// Opening the project modal is a click on the plate specifically — the rest of the
-    /// pen belongs to the animals, whose own hit test already owns those points.
-    func test_penSignIndex_hitsOnlyThePlate() {
-        let pen = placedPen("alpha", x: 4, y: 3)
+    /// The interior is the animals' surface — their own hit test owns those points, and
+    /// clicking a cow must not open the project instead of the cow.
+    func test_penFenceIndex_missesThePenInterior() {
         let targets = FarmHitTest.penTargets(from: [pen])
-        let sign = FarmPenFurniture.signRect(for: pen)
 
-        XCTAssertEqual(FarmHitTest.penSignIndex(at: CGPoint(x: sign.midX, y: sign.midY), in: targets), 0)
-        // Middle of the pen body: inside the pen, but not on its plate.
-        XCTAssertNil(FarmHitTest.penSignIndex(at: CGPoint(x: 6 * 16, y: 5 * 16), in: targets))
+        XCTAssertNil(FarmHitTest.penFenceIndex(at: CGPoint(x: 128, y: 96), in: targets))
     }
 
-    /// A plate overhangs the top of its own pen, so with a tall pen above it the plate
-    /// can land inside that upper pen's rectangle. Resolving by pen order alone points at
-    /// the upper pen while the pointer is squarely on the lower pen's own name plate,
-    /// which lights the chip on the wrong sign.
-    func test_penIndex_prefersThePlateOwnerWhereAPlateOverlapsThePenAbove() {
-        let upper = placedPen("upper", x: 4, y: 3, h: 8)
-        let lower = placedPen("lower", x: 4, y: 11)
-        let targets = FarmHitTest.penTargets(from: [upper, lower])
-        let plate = FarmPenFurniture.signRect(for: lower)
-
-        XCTAssertLessThan(plate.minY, CGFloat((upper.y + upper.h) * 16),
-                          "fixture assumes the lower plate reaches into the upper pen")
-        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: plate.midX, y: plate.minY + 0.5),
-                                            in: targets), 1)
-    }
-
-    /// The `!` chip sits just off the right end of the plate, not on it, so the click
-    /// target has to reach past the plate's own edge — otherwise the one pixel everybody
-    /// aims at is the one pixel that misses.
-    func test_penSignIndex_hitsTheInfoBadgeBesideThePlate() {
-        let pen = placedPen("alpha", x: 4, y: 3)
+    func test_penFenceIndex_missesOpenGround() {
         let targets = FarmHitTest.penTargets(from: [pen])
-        let badge = FarmPenFurniture.infoBadgeRect(for: pen)
 
-        XCTAssertGreaterThan(badge.minX, FarmPenFurniture.signRect(for: pen).maxX - 4,
-                             "fixture assumes the chip hangs off the right end of the plate")
-        XCTAssertEqual(FarmHitTest.penSignIndex(at: CGPoint(x: badge.midX, y: badge.midY), in: targets), 0)
+        XCTAssertNil(FarmHitTest.penFenceIndex(at: CGPoint(x: 600, y: 600), in: targets))
     }
 
-    /// The plate is 15px tall and can be narrow for a short project name, so it gets the
-    /// same minimum touch box as the smallest animals rather than its own new numbers.
-    func test_penSignTarget_isAtLeastTheMinimumTouchBox() {
-        let targets = FarmHitTest.penTargets(from: [placedPen("a", x: 4, y: 3)])
+    /// The gated rail has a 2-tile opening with no fence tiles in it, but the ring stays
+    /// clickable across the gap: people aim at the outline of the pen, and carving a dead
+    /// spot into the middle of one rail of every pen would just feel broken.
+    func test_penFenceIndex_hitsTheGateOpening() {
+        let targets = FarmHitTest.penTargets(from: [pen])
+        XCTAssertEqual(pen.gate, .south)
 
-        XCTAssertGreaterThanOrEqual(targets[0].signRect.width, FarmHitTest.minimumSize)
-        XCTAssertGreaterThanOrEqual(targets[0].signRect.height, FarmHitTest.minimumSize)
+        // Bottom rail, in the 2-tile gap at gateX-1/gateX.
+        XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: CGFloat(pen.gateX) * 16, y: 136),
+                                                 in: targets), 0)
+    }
+
+    /// A pen only two tiles across has no interior left once the ring is taken out; the
+    /// whole thing has to stay clickable rather than collapsing to nothing.
+    func test_penFenceIndex_treatsAVeryThinPenAsAllFence() {
+        let thin = placedPen("thin", x: 4, y: 3, w: 2, h: 2)
+        let targets = FarmHitTest.penTargets(from: [thin])
+
+        XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: 4 * 16 + 8, y: 3 * 16 + 8),
+                                                 in: targets), 0)
+    }
+
+    func test_penFenceIndex_distinguishesAdjacentPens() {
+        let other = placedPen("beta", x: 20, y: 3)
+        let targets = FarmHitTest.penTargets(from: [pen, other])
+
+        XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: 128, y: 52), in: targets), 0)
+        XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: 24 * 16, y: 52), in: targets), 1)
     }
 }

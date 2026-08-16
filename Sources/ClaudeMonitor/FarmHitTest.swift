@@ -8,17 +8,13 @@ struct HitTarget: Equatable {
     let rect: CGRect
 }
 
-/// One clickable pen: the project behind it and the two regions it answers for, both in
-/// the same 1× tile-pixel space as `HitTarget`.
+/// One clickable pen: the project behind it and its fence, in the same 1× tile-pixel
+/// space as `HitTarget`. The fence is the ring between the two rects — `rect` is the
+/// pen's outer edge and `innerRect` is the hole the animals stand in.
 struct PenTarget: Equatable {
     let index: Int
-    /// Pointing at the project: the pen's own rectangle *plus* its name plate. The plate
-    /// hangs above the top rail, outside the pen, and is where the `!` badge appears —
-    /// without it in the region the badge would disappear as you reached for it.
     let rect: CGRect
-    /// The plate and its `!` chip. Clicking here opens the project modal; the pen's
-    /// interior belongs to the animals, which have their own hit test over those points.
-    let signRect: CGRect
+    let innerRect: CGRect
 }
 
 /// Maps a point in the farm to the session under it. Bounding boxes only — per-pixel
@@ -62,26 +58,26 @@ enum FarmHitTest {
     /// way animals do.
     static func penTargets(from pens: [PlacedPen]) -> [PenTarget] {
         pens.enumerated().map { index, pen in
-            let plate = FarmPenFurniture.signRect(for: pen)
-                .union(FarmPenFurniture.infoBadgeRect(for: pen))
-            let sign = grown(plate.insetBy(dx: -padding, dy: -padding))
             let body = CGRect(x: CGFloat(pen.x) * tile, y: CGFloat(pen.y) * tile,
                               width: CGFloat(pen.w) * tile, height: CGFloat(pen.h) * tile)
-            return PenTarget(index: index, rect: body.union(sign), signRect: sign)
+            return PenTarget(index: index,
+                             rect: body.insetBy(dx: -padding, dy: -padding),
+                             innerRect: body.insetBy(dx: tile + padding, dy: tile + padding))
         }
     }
 
-    static func penIndex(at point: CGPoint, in targets: [PenTarget]) -> Int? {
-        // The plate wins over any pen body. A plate overhangs the top of its own pen and
-        // so can land inside the pen laid out above it; resolving by pen order alone
-        // would point at that upper pen while the pointer was squarely on the lower
-        // pen's own name plate.
-        if let onPlate = penSignIndex(at: point, in: targets) { return onPlate }
-        return targets.first { $0.rect.contains(point) }?.index
-    }
-
-    static func penSignIndex(at point: CGPoint, in targets: [PenTarget]) -> Int? {
-        targets.first { $0.signRect.contains(point) }?.index
+    /// The fence, which is `FarmPenFurniture.fenceTiles`' one-tile perimeter ring with a
+    /// couple of pixels of slop on both of its edges. Clicking it opens the project;
+    /// the interior stays the animals'.
+    ///
+    /// The gated rail has a 2-tile opening with no fence tiles in it, and this hits
+    /// across that gap anyway — people aim at the outline of a pen, and a dead spot in
+    /// the middle of one rail of every pen would read as a bug.
+    ///
+    /// A pen too small to have an interior yields a null `innerRect`, which contains no
+    /// point, so the whole pen stays clickable rather than collapsing to nothing.
+    static func penFenceIndex(at point: CGPoint, in targets: [PenTarget]) -> Int? {
+        targets.first { $0.rect.contains(point) && !$0.innerRect.contains(point) }?.index
     }
 
     /// Tile size in 1× pixels. Pen coordinates are tiles; hit testing is in pixels.
