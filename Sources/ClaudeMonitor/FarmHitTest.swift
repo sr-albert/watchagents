@@ -72,7 +72,12 @@ enum FarmHitTest {
     }
 
     static func penIndex(at point: CGPoint, in targets: [PenTarget]) -> Int? {
-        targets.first { $0.rect.contains(point) }?.index
+        // The plate wins over any pen body. A plate overhangs the top of its own pen and
+        // so can land inside the pen laid out above it; resolving by pen order alone
+        // would point at that upper pen while the pointer was squarely on the lower
+        // pen's own name plate.
+        if let onPlate = penSignIndex(at: point, in: targets) { return onPlate }
+        return targets.first { $0.rect.contains(point) }?.index
     }
 
     static func penSignIndex(at point: CGPoint, in targets: [PenTarget]) -> Int? {

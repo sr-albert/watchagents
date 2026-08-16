@@ -79,15 +79,21 @@ final class FarmSceneryTests: XCTestCase {
                              "trees stand apart — that is a field of lollipops, not a stand")
     }
 
-    func test_theTopTreelineThinsInward() {
-        // The density ramp is what makes the treeline ragged instead of a solid ribbon.
-        // Compared in pairs of rows rather than row by row: a tree gets one tile of
-        // vertical jitter, so any single row draws from two source rows of the ramp.
+    /// Measured on the *bottom* treeline, not the top. The top stand's inner rows are
+    /// already blocked by the one-tile occupancy buffer around the first row of pens, so
+    /// it thins there whatever the ramp says — flattening the ramp to `[1.0]` leaves the
+    /// top band's row counts completely unchanged, which makes a top-edge assertion a
+    /// test that cannot fail. Below the last pen row the ground is open and the ramp is
+    /// the only thing shaping the band: ramped it measures 5/8/19 inward-to-outward,
+    /// flattened 15/18/23.
+    func test_theTreelineThinsInwardFromTheOuterEdge() {
         let (layout, dirt) = fixture(8)
         let canopy = canopyCells(FarmScenery.decorate(layout: layout, dirt: dirt))
-        let outer = canopy.filter { $0.y <= 1 }.count
-        let inner = canopy.filter { $0.y == 2 || $0.y == 3 }.count
-        XCTAssertGreaterThan(outer, inner, "the top treeline is not thinning inward")
+        let outermost = canopy.filter { $0.y == layout.rows - 2 }.count
+        let innermost = canopy.filter { $0.y == layout.rows - 4 }.count
+
+        XCTAssertGreaterThan(outermost, innermost * 2,
+                             "the treeline is not thinning inward — the density ramp is not biting")
     }
 
     func test_staysInsideTheCanvas() {

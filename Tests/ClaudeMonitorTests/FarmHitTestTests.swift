@@ -130,6 +130,22 @@ final class FarmPenHitTestTests: XCTestCase {
         XCTAssertNil(FarmHitTest.penSignIndex(at: CGPoint(x: 6 * 16, y: 5 * 16), in: targets))
     }
 
+    /// A plate overhangs the top of its own pen, so with a tall pen above it the plate
+    /// can land inside that upper pen's rectangle. Resolving by pen order alone points at
+    /// the upper pen while the pointer is squarely on the lower pen's own name plate,
+    /// which lights the chip on the wrong sign.
+    func test_penIndex_prefersThePlateOwnerWhereAPlateOverlapsThePenAbove() {
+        let upper = placedPen("upper", x: 4, y: 3, h: 8)
+        let lower = placedPen("lower", x: 4, y: 11)
+        let targets = FarmHitTest.penTargets(from: [upper, lower])
+        let plate = FarmPenFurniture.signRect(for: lower)
+
+        XCTAssertLessThan(plate.minY, CGFloat((upper.y + upper.h) * 16),
+                          "fixture assumes the lower plate reaches into the upper pen")
+        XCTAssertEqual(FarmHitTest.penIndex(at: CGPoint(x: plate.midX, y: plate.minY + 0.5),
+                                            in: targets), 1)
+    }
+
     /// The `!` chip sits just off the right end of the plate, not on it, so the click
     /// target has to reach past the plate's own edge — otherwise the one pixel everybody
     /// aims at is the one pixel that misses.
