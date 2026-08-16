@@ -323,6 +323,9 @@ struct Sprite {
     let shadowCenterX: Int
     let shadowWidth: Int
     let badge: (x: Int, y: Int, tile: Int)?
+    /// The session this sprite stands for, for hit-testing (`FarmHitTest`). `nil` for the
+    /// tile-0103 fixture below, which is scenery — there is no session to select.
+    let pid: Int?
 }
 
 func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
@@ -345,7 +348,8 @@ func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
             }
             sprites.append(Sprite(by: placement.by, x: placement.bx, y: placement.by - frame.height,
                                    image: image, shadowCenterX: placement.bx + frame.width / 2,
-                                   shadowWidth: Int(Double(frame.width) * 0.6), badge: badge))
+                                   shadowWidth: Int(Double(frame.width) * 0.6), badge: badge,
+                                   pid: placement.pid))
         }
     }
 
@@ -362,7 +366,7 @@ func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
         let fy = (barnY + FarmLayoutEngine.barnH) * 16 + 2
         let sortKey = (barnY + FarmLayoutEngine.barnH) * 16 + 18
         sprites.append(Sprite(by: sortKey, x: fx, y: fy, image: farmer,
-                               shadowCenterX: fx + 8, shadowWidth: 10, badge: nil))
+                               shadowCenterX: fx + 8, shadowWidth: 10, badge: nil, pid: nil))
     }
 
     return sprites.sorted { $0.by < $1.by }
