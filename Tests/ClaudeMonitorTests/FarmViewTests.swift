@@ -53,6 +53,21 @@ final class FarmViewSceneAssemblyTests: XCTestCase {
                        "returning to the original geometry must not reuse the now-stale cached image")
     }
 
+    /// The seam between the renderer and `FarmHitTest`: every animal sprite must carry
+    /// the session it stands for, and the tile-0103 barn-door fixture must not — it is
+    /// scenery riding in the same depth-sorted list, and selecting it would be nonsense.
+    func test_collectSprites_carriesThePIDOfEveryAnimalAndNoneForTheFixture() {
+        let procs = (0..<6).map { ClaudeProcess(pid: 100 + $0, cpu: 0, mem: 0, cwd: "/proj\($0 % 3)") }
+        let pens = FarmGrouping.pens(from: procs)
+        let layout = FarmLayoutEngine.layout(pens: pens, cols: 60, rows: 40)
+        let scene = buildScene(pens: pens, layout: layout)
+
+        let sprites = collectSprites(scene: scene, time: 0)
+
+        XCTAssertEqual(sprites.compactMap(\.pid).sorted(), procs.map(\.pid).sorted())
+        XCTAssertEqual(sprites.filter { $0.pid == nil }.count, 1)
+    }
+
     func test_collectSprites_includesFarmerExactlyWhenBarnExists() {
         let procs = (0..<6).map { ClaudeProcess(pid: $0, cpu: 0, mem: 0, cwd: "/proj\($0 % 3)") }
         let pens = FarmGrouping.pens(from: procs)

@@ -372,13 +372,83 @@ func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
     return sprites.sorted { $0.by < $1.by }
 }
 
+/// The hit targets for the frame the `Canvas` most recently drew. Sprite positions are
+/// `time`-dependent (walk cycle, bounce, idle wander) and a gesture handler has no access
+/// to the `TimelineView`'s date, so recomputing them there would hit-test a frame that was
+/// never on screen. Handing the gesture what was actually drawn keeps clicking WYSIWYG.
+/// Single-slot and lock-guarded, the same idiom as `StaticLayerCache` — one farm window
+/// exists at a time, so there is only ever one current frame.
+private enum LastDrawnFrame {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var stored: [HitTarget] = []
+
+    static func store(_ value: [HitTarget]) {
+        lock.lock()
+        defer { lock.unlock() }
+        stored = value
+    }
+
+    static func targets() -> [HitTarget] {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+}
+
+/// The wooden sign palette, shared by the pen name plates drawn here and the detail card
+/// in `FarmDetailCard.swift` so the card reads as part of the same farm.
+enum FarmPalette {
+    static let woodHi = Color(red: 232.0 / 255, green: 174.0 / 255, blue: 118.0 / 255)
+    static let wood = Color(red: 188.0 / 255, green: 122.0 / 255, blue: 74.0 / 255)
+    static let woodLo = Color(red: 69.0 / 255, green: 38.0 / 255, blue: 46.0 / 255)
+    static let ink = Color(red: 48.0 / 255, green: 26.0 / 255, blue: 22.0 / 255)
+}
+
 /// Pixel art scaled with smoothing turns to mush; `.interpolation(.none)` keeps every
 /// blit nearest-neighbour under the context's integer `scaleBy`.
 private func pixelImage(_ cg: CGImage) -> Image {
     Image(decorative: cg, scale: 1, orientation: .up).interpolation(.none)
 }
 
-private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSize, into ctx: inout GraphicsContext) {
+/// One wooden plate with a pixel-text label centred on it: the pen signs nailed to the
+/// top rail, and the pointer/selection name plate above an animal.
+private func drawPlate(_ r: CGRect, text: CGImage?, into ctx: inout GraphicsContext) {
+    ctx.fill(Path(CGRect(x: r.minX - 1, y: r.minY - 1, width: r.width + 2, height: r.height + 1)),
+             with: .color(FarmPalette.woodLo))
+    ctx.fill(Path(r), with: .color(FarmPalette.wood))
+    ctx.fill(Path(CGRect(x: r.minX + 1, y: r.minY + 1, width: max(0, r.width - 2), height: 1)),
+             with: .color(FarmPalette.woodHi))
+    guard let img = text else { return }
+    // Rounded to a whole pixel: `PixelText.image` is a pre-rendered crisp bitmap
+    // meant to be blitted like a sprite, and `plateW = textWidth + 9` (odd whenever
+    // textWidth is even) makes the mathematically-centred offset land on a half
+    // pixel — with `.interpolation(.none)` that sub-pixel offset makes Core
+    // Graphics resample individual glyph columns inconsistently, visibly distorting
+    // letters like R/D rather than just shifting the whole label half a pixel.
+    let tx = (r.minX + (r.width - CGFloat(img.width)) / 2).rounded()
+    let ty = (r.minY + (r.height - CGFloat(img.height)) / 2).rounded()
+    // `PixelText.image` renders white glyphs on transparent — recolor them to ink
+    // via a multiply filter rather than baking a colour into the (cached) bitmap.
+    ctx.drawLayer { layer in
+        layer.addFilter(.colorMultiply(FarmPalette.ink))
+        layer.draw(pixelImage(img), in: CGRect(x: tx, y: ty, width: CGFloat(img.width), height: CGFloat(img.height)))
+    }
+}
+
+/// Where the pointer/selection name plate hangs: same 15px-tall wooden sign as a pen's,
+/// centred over the animal and clear of the overloaded bomb badge, which already occupies
+/// the 16px directly above the sprite's top edge.
+private func namePlateRect(for sprite: Sprite, text: CGImage) -> CGRect {
+    let plateH: CGFloat = 15
+    let plateW = CGFloat(text.width) + 9
+    let bottom = CGFloat(sprite.y) - (sprite.badge == nil ? 4 : 20)
+    return CGRect(x: max(1, (CGFloat(sprite.shadowCenterX) - plateW / 2).rounded()),
+                  y: max(1, bottom - plateH),
+                  width: plateW, height: plateH)
+}
+
+private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSize,
+                  hoveredPID: Int?, selectedPID: Int?, into ctx: inout GraphicsContext) {
     // Leftover window space (the common case — window pixel size is rarely an exact
     // multiple of 16*scale) extends the ground fill; it never letterboxes.
     let grassBG = Color(red: 110.0 / 255, green: 190.0 / 255, blue: 90.0 / 255)
@@ -396,6 +466,8 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
     // 6. Animals (+ the tile-0103 barn-door fixture): one y-sort, shadows first (as one pass, matching
     // mock7.py compositing the whole shadow layer before any sprite), then the sprites.
     let sprites = collectSprites(scene: scene, time: time)
+    // Publish this exact frame's boxes for the hover/click handlers — see `LastDrawnFrame`.
+    LastDrawnFrame.store(FarmHitTest.targets(from: sprites))
     let shadowColor = Color(red: 32.0 / 255, green: 62.0 / 255, blue: 34.0 / 255, opacity: 0.31)
     for s in sprites {
         let cx = CGFloat(s.shadowCenterX), sw = CGFloat(s.shadowWidth), sy = CGFloat(s.by)
@@ -414,39 +486,39 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
     }
 
     // 8. Sign plates, drawn last.
-    let woodHi = Color(red: 232.0 / 255, green: 174.0 / 255, blue: 118.0 / 255)
-    let wood = Color(red: 188.0 / 255, green: 122.0 / 255, blue: 74.0 / 255)
-    let woodLo = Color(red: 69.0 / 255, green: 38.0 / 255, blue: 46.0 / 255)
-    let ink = Color(red: 48.0 / 255, green: 26.0 / 255, blue: 22.0 / 255)
     for sign in scene.signs {
-        let r = sign.rect
-        ctx.fill(Path(CGRect(x: r.minX - 1, y: r.minY - 1, width: r.width + 2, height: r.height + 1)),
-                 with: .color(woodLo))
-        ctx.fill(Path(r), with: .color(wood))
-        ctx.fill(Path(CGRect(x: r.minX + 1, y: r.minY + 1, width: max(0, r.width - 2), height: 1)),
-                 with: .color(woodHi))
-        guard let img = sign.image else { continue }
-        // Rounded to a whole pixel: `PixelText.image` is a pre-rendered crisp bitmap
-        // meant to be blitted like a sprite, and `plateW = textWidth + 9` (odd whenever
-        // textWidth is even) makes the mathematically-centred offset land on a half
-        // pixel — with `.interpolation(.none)` that sub-pixel offset makes Core
-        // Graphics resample individual glyph columns inconsistently, visibly distorting
-        // letters like R/D rather than just shifting the whole label half a pixel.
-        let tx = (r.minX + (r.width - CGFloat(img.width)) / 2).rounded()
-        let ty = (r.minY + (r.height - CGFloat(img.height)) / 2).rounded()
-        // `PixelText.image` renders white glyphs on transparent — recolor them to ink
-        // via a multiply filter rather than baking a colour into the (cached) bitmap.
-        ctx.drawLayer { layer in
-            layer.addFilter(.colorMultiply(ink))
-            layer.draw(pixelImage(img), in: CGRect(x: tx, y: ty, width: CGFloat(img.width), height: CGFloat(img.height)))
-        }
+        drawPlate(sign.rect, text: sign.image, into: &ctx)
+    }
+
+    // 9. The pointer/selection name plate, on top of everything. Spec §5.1 keeps the
+    // resting scene quiet — state lives in posture, colour and motion — so a session's
+    // identity appears only for the one animal you are pointing at or have selected.
+    for s in sprites {
+        guard let pid = s.pid, pid == hoveredPID || pid == selectedPID else { continue }
+        guard let img = PixelText.image("PID \(pid)") else { continue }
+        drawPlate(namePlateRect(for: s, text: img), text: img, into: &ctx)
     }
 }
 
 // MARK: - View
 
+/// Window point → the 1× tile-pixel space every animal is drawn in.
+private func farmPoint(_ point: CGPoint, scale: Int) -> CGPoint {
+    CGPoint(x: point.x / CGFloat(scale), y: point.y / CGFloat(scale))
+}
+
 struct FarmView: View {
     @ObservedObject var viewModel: MonitorViewModel
+    @State private var hoveredPID: Int?
+    @State private var selectedPID: Int?
+
+    /// Resolved live from the current snapshot rather than captured at click time, so the
+    /// card's numbers tick with the poll and the card dismisses itself when the session
+    /// exits.
+    private var selectedProcess: ClaudeProcess? {
+        guard let selectedPID else { return nil }
+        return viewModel.snapshot.processes.first { $0.pid == selectedPID }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -468,9 +540,43 @@ struct FarmView: View {
                         Canvas { ctx, size in
                             draw(scene: scene, scale: scale,
                                  time: context.date.timeIntervalSinceReferenceDate,
-                                 canvasSize: size, into: &ctx)
+                                 canvasSize: size,
+                                 hoveredPID: hoveredPID, selectedPID: selectedPID, into: &ctx)
                         }
                         .frame(width: contentWidth, height: contentHeight)
+                        // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
+                        // tile-pixel space, so window points divide by `scale` before any
+                        // hit test. `.local` keeps this correct once the view scrolls.
+                        .onContinuousHover(coordinateSpace: .local) { phase in
+                            switch phase {
+                            case .active(let point):
+                                let hit = FarmHitTest.pid(at: farmPoint(point, scale: scale),
+                                                          in: LastDrawnFrame.targets())
+                                // Only assign on a real transition: moving the pointer
+                                // within one animal must not re-evaluate `body` at
+                                // mouse-move rate.
+                                if hit != hoveredPID { hoveredPID = hit }
+                            case .ended:
+                                if hoveredPID != nil { hoveredPID = nil }
+                            }
+                        }
+                        // `onTapGesture` only reports a location on macOS 14; a
+                        // zero-distance drag gives one on 13. Trackpad and wheel scrolling
+                        // aren't drag gestures, so this doesn't compete with the ScrollView.
+                        .gesture(
+                            DragGesture(minimumDistance: 0).onEnded { value in
+                                guard abs(value.translation.width) < 3,
+                                      abs(value.translation.height) < 3 else { return }
+                                selectedPID = FarmHitTest.pid(at: farmPoint(value.location, scale: scale),
+                                                              in: LastDrawnFrame.targets())
+                            }
+                        )
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let process = selectedProcess {
+                        FarmDetailCard(process: process) { selectedPID = nil }
+                            .padding(12)
                     }
                 }
             }

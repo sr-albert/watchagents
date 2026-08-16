@@ -10,6 +10,15 @@ enum SessionStateBadge {
         case .frozen: return "🥶"
         }
     }
+
+    static func label(for state: SessionState) -> String {
+        switch state {
+        case .idle: return "Idle"
+        case .active: return "Active"
+        case .overloaded: return "Overloaded"
+        case .frozen: return "Frozen"
+        }
+    }
 }
 
 struct DropdownView: View {
