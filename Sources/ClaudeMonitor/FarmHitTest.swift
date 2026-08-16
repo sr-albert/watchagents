@@ -16,8 +16,8 @@ struct PenTarget: Equatable {
     /// hangs above the top rail, outside the pen, and is where the `!` badge appears —
     /// without it in the region the badge would disappear as you reached for it.
     let rect: CGRect
-    /// The plate alone. Clicking it opens the project modal; the pen's interior belongs
-    /// to the animals, which have their own hit test over the same points.
+    /// The plate and its `!` chip. Clicking here opens the project modal; the pen's
+    /// interior belongs to the animals, which have their own hit test over those points.
     let signRect: CGRect
 }
 
@@ -62,7 +62,9 @@ enum FarmHitTest {
     /// way animals do.
     static func penTargets(from pens: [PlacedPen]) -> [PenTarget] {
         pens.enumerated().map { index, pen in
-            let sign = grown(FarmPenFurniture.signRect(for: pen).insetBy(dx: -padding, dy: -padding))
+            let plate = FarmPenFurniture.signRect(for: pen)
+                .union(FarmPenFurniture.infoBadgeRect(for: pen))
+            let sign = grown(plate.insetBy(dx: -padding, dy: -padding))
             let body = CGRect(x: CGFloat(pen.x) * tile, y: CGFloat(pen.y) * tile,
                               width: CGFloat(pen.w) * tile, height: CGFloat(pen.h) * tile)
             return PenTarget(index: index, rect: body.union(sign), signRect: sign)

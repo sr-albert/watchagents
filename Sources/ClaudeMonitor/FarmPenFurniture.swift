@@ -94,4 +94,21 @@ enum FarmPenFurniture {
         let y0 = pen.y * 16 + 14 - plateH
         return CGRect(x: x0, y: CGFloat(y0), width: CGFloat(plateW), height: CGFloat(plateH))
     }
+
+    /// Side of the `!` chip that appears at the end of a pen's plate while the pointer is
+    /// on that pen — the affordance for opening the project modal.
+    static let infoBadgeSize: CGFloat = 13
+
+    /// The chip hangs just off the plate's right edge rather than sitting on it. `plateW`
+    /// is the label plus 9px of padding and nothing more, so a chip placed inside would
+    /// cover the last letters of the project name.
+    ///
+    /// Shared by the renderer and `FarmHitTest` so the drawn chip and the clickable chip
+    /// cannot drift apart.
+    static func infoBadgeRect(for pen: PlacedPen) -> CGRect {
+        let sign = signRect(for: pen)
+        return CGRect(x: (sign.maxX - 2).rounded(),
+                      y: (sign.midY - infoBadgeSize / 2).rounded(),
+                      width: infoBadgeSize, height: infoBadgeSize)
+    }
 }

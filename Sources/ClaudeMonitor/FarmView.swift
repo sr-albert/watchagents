@@ -381,17 +381,29 @@ func collectSprites(scene: BuiltScene, time: Double) -> [Sprite] {
 private enum LastDrawnFrame {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var stored: [HitTarget] = []
+    nonisolated(unsafe) private static var storedPens: [PenTarget] = []
 
-    static func store(_ value: [HitTarget]) {
+    static func store(_ value: [HitTarget], pens: [PenTarget]) {
         lock.lock()
         defer { lock.unlock() }
         stored = value
+        storedPens = pens
     }
 
     static func targets() -> [HitTarget] {
         lock.lock()
         defer { lock.unlock() }
         return stored
+    }
+
+    /// Pens do not move between frames, so unlike the sprite boxes these are published
+    /// here for cost rather than for correctness: `signRect` measures its label's pixel
+    /// width, and recomputing that for every pen on every mouse-move event is wasteful
+    /// when the answer only changes when the layout does.
+    static func penTargets() -> [PenTarget] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPens
     }
 }
 
@@ -447,8 +459,28 @@ private func namePlateRect(for sprite: Sprite, text: CGImage) -> CGRect {
                   width: plateW, height: plateH)
 }
 
+/// The `!` chip that appears at the end of a pen's name plate while the pointer is on
+/// that pen. Drawn as ink-on-wood inverted into a filled chip, so it reads as a control
+/// rather than as more label text. Geometry comes from `FarmPenFurniture` because the
+/// hit test uses the same rect.
+private func drawInfoBadge(_ r: CGRect, into ctx: inout GraphicsContext) {
+    ctx.fill(Path(CGRect(x: r.minX - 1, y: r.minY - 1, width: r.width + 2, height: r.height + 2)),
+             with: .color(FarmPalette.woodLo))
+    ctx.fill(Path(r), with: .color(FarmPalette.ink))
+    guard let img = PixelText.image("!") else { return }
+    // Whole-pixel origin for the same reason `drawPlate` rounds: a half-pixel offset
+    // under `.interpolation(.none)` resamples glyph columns inconsistently.
+    let tx = (r.minX + (r.width - CGFloat(img.width)) / 2).rounded()
+    let ty = (r.minY + (r.height - CGFloat(img.height)) / 2).rounded()
+    ctx.drawLayer { layer in
+        layer.addFilter(.colorMultiply(FarmPalette.woodHi))
+        layer.draw(pixelImage(img), in: CGRect(x: tx, y: ty, width: CGFloat(img.width), height: CGFloat(img.height)))
+    }
+}
+
 private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSize,
-                  hoveredPID: Int?, selectedPID: Int?, into ctx: inout GraphicsContext) {
+                  hoveredPID: Int?, selectedPID: Int?, hoveredPen: Int?,
+                  into ctx: inout GraphicsContext) {
     // Leftover window space (the common case — window pixel size is rarely an exact
     // multiple of 16*scale) extends the ground fill; it never letterboxes.
     let grassBG = Color(red: 110.0 / 255, green: 190.0 / 255, blue: 90.0 / 255)
@@ -467,7 +499,8 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
     // mock7.py compositing the whole shadow layer before any sprite), then the sprites.
     let sprites = collectSprites(scene: scene, time: time)
     // Publish this exact frame's boxes for the hover/click handlers — see `LastDrawnFrame`.
-    LastDrawnFrame.store(FarmHitTest.targets(from: sprites))
+    LastDrawnFrame.store(FarmHitTest.targets(from: sprites),
+                         pens: FarmHitTest.penTargets(from: scene.layout.pens))
     let shadowColor = Color(red: 32.0 / 255, green: 62.0 / 255, blue: 34.0 / 255, opacity: 0.31)
     for s in sprites {
         let cx = CGFloat(s.shadowCenterX), sw = CGFloat(s.shadowWidth), sy = CGFloat(s.by)
@@ -498,6 +531,13 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
         guard let img = PixelText.image("PID \(pid)") else { continue }
         drawPlate(namePlateRect(for: s, text: img), text: img, into: &ctx)
     }
+
+    // 10. The project `!` chip, for the one pen the pointer is on. Same reasoning as
+    // step 9: an affordance on all twenty pens at once is the wall of text the farm
+    // exists to replace.
+    if let hoveredPen, scene.layout.pens.indices.contains(hoveredPen) {
+        drawInfoBadge(FarmPenFurniture.infoBadgeRect(for: scene.layout.pens[hoveredPen]), into: &ctx)
+    }
 }
 
 // MARK: - View
@@ -511,6 +551,11 @@ struct FarmView: View {
     @ObservedObject var viewModel: MonitorViewModel
     @State private var hoveredPID: Int?
     @State private var selectedPID: Int?
+    @State private var hoveredPen: Int?
+    /// Keyed by working directory, not by pen index: the pen list is rebuilt from every
+    /// snapshot and a project that exits shifts every index after it, which would leave
+    /// an open modal silently showing a different project.
+    @State private var modalCWD: String?
 
     /// Resolved live from the current snapshot rather than captured at click time, so the
     /// card's numbers tick with the poll and the card dismisses itself when the session
@@ -520,10 +565,18 @@ struct FarmView: View {
         return viewModel.snapshot.processes.first { $0.pid == selectedPID }
     }
 
+    /// Same rule as `selectedProcess`: live, so the modal's aggregates tick with the poll
+    /// and it closes itself when the project's last session exits.
+    private var modalPen: FarmPen? {
+        guard let modalCWD else { return nil }
+        return pens.first { $0.cwd == modalCWD }
+    }
+
+    private var pens: [FarmPen] { FarmGrouping.pens(from: viewModel.snapshot.processes) }
+
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
-                let pens = FarmGrouping.pens(from: viewModel.snapshot.processes)
                 let (scale, rawLayout) = FarmScene.selectScaleAndLayout(pens: pens, width: geo.size.width, height: geo.size.height)
                 let scene = buildScene(pens: pens, layout: rawLayout)
                 let tile = CGFloat(16 * scale)
@@ -541,7 +594,8 @@ struct FarmView: View {
                             draw(scene: scene, scale: scale,
                                  time: context.date.timeIntervalSinceReferenceDate,
                                  canvasSize: size,
-                                 hoveredPID: hoveredPID, selectedPID: selectedPID, into: &ctx)
+                                 hoveredPID: hoveredPID, selectedPID: selectedPID,
+                                 hoveredPen: hoveredPen, into: &ctx)
                         }
                         .frame(width: contentWidth, height: contentHeight)
                         // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
@@ -550,14 +604,17 @@ struct FarmView: View {
                         .onContinuousHover(coordinateSpace: .local) { phase in
                             switch phase {
                             case .active(let point):
-                                let hit = FarmHitTest.pid(at: farmPoint(point, scale: scale),
-                                                          in: LastDrawnFrame.targets())
+                                let p = farmPoint(point, scale: scale)
+                                let hit = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
                                 // Only assign on a real transition: moving the pointer
                                 // within one animal must not re-evaluate `body` at
                                 // mouse-move rate.
                                 if hit != hoveredPID { hoveredPID = hit }
+                                let pen = FarmHitTest.penIndex(at: p, in: LastDrawnFrame.penTargets())
+                                if pen != hoveredPen { hoveredPen = pen }
                             case .ended:
                                 if hoveredPID != nil { hoveredPID = nil }
+                                if hoveredPen != nil { hoveredPen = nil }
                             }
                         }
                         // `onTapGesture` only reports a location on macOS 14; a
@@ -570,8 +627,16 @@ struct FarmView: View {
                             DragGesture(minimumDistance: 0).onEnded { value in
                                 guard abs(value.translation.width) < 3,
                                       abs(value.translation.height) < 3 else { return }
-                                selectedPID = FarmHitTest.pid(at: farmPoint(value.location, scale: scale),
-                                                              in: LastDrawnFrame.targets())
+                                let p = farmPoint(value.location, scale: scale)
+                                // The plate wins over the animals. It overlaps the pen's
+                                // top rail, where an animal can be standing, and someone
+                                // aiming at the `!` chip means the project.
+                                if let pen = FarmHitTest.penSignIndex(at: p, in: LastDrawnFrame.penTargets()) {
+                                    modalCWD = scene.layout.pens[pen].pen.cwd
+                                    selectedPID = nil
+                                    return
+                                }
+                                selectedPID = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
                             }
                         )
                     }
@@ -596,6 +661,25 @@ struct FarmView: View {
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity)
+        }
+        // Mounted here, on the whole window, and deliberately not inside the `ScrollView`
+        // above: content inside it scrolls, so a modal placed there would drift off
+        // centre the moment the farm was scrolled.
+        .overlay {
+            if let pen = modalPen {
+                ZStack {
+                    Color.black.opacity(0.45)
+                        .ignoresSafeArea()
+                        .onTapGesture { modalCWD = nil }
+                    FarmProjectModal(pen: pen) { modalCWD = nil }
+                }
+                // Escape is wired but not relied on: this is an `LSUIElement` accessory
+                // app whose window is not always key, and a non-key window may never see
+                // the command. The scrim and the close button are the dismissals that
+                // always work.
+                .onExitCommand { modalCWD = nil }
+                .transition(.opacity)
+            }
         }
         // Spec §2.4's own 1x minimum width: with the barn on its own row (Fix 2), the
         // worst realistic pen (8 of the largest species, penW=23) needs

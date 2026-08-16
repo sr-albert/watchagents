@@ -130,6 +130,19 @@ final class FarmPenHitTestTests: XCTestCase {
         XCTAssertNil(FarmHitTest.penSignIndex(at: CGPoint(x: 6 * 16, y: 5 * 16), in: targets))
     }
 
+    /// The `!` chip sits just off the right end of the plate, not on it, so the click
+    /// target has to reach past the plate's own edge — otherwise the one pixel everybody
+    /// aims at is the one pixel that misses.
+    func test_penSignIndex_hitsTheInfoBadgeBesideThePlate() {
+        let pen = placedPen("alpha", x: 4, y: 3)
+        let targets = FarmHitTest.penTargets(from: [pen])
+        let badge = FarmPenFurniture.infoBadgeRect(for: pen)
+
+        XCTAssertGreaterThan(badge.minX, FarmPenFurniture.signRect(for: pen).maxX - 4,
+                             "fixture assumes the chip hangs off the right end of the plate")
+        XCTAssertEqual(FarmHitTest.penSignIndex(at: CGPoint(x: badge.midX, y: badge.midY), in: targets), 0)
+    }
+
     /// The plate is 15px tall and can be narrow for a short project name, so it gets the
     /// same minimum touch box as the smallest animals rather than its own new numbers.
     func test_penSignTarget_isAtLeastTheMinimumTouchBox() {
