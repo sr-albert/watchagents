@@ -551,12 +551,13 @@ struct FarmView: View {
     /// modal is showing — the doors are the modal's only opening animation.
     @State private var houseOpen = false
 
-    /// Resolved live from the current snapshot rather than captured at click time, so the
-    /// card's numbers tick with the poll and the card dismisses itself when the session
-    /// exits.
-    private var selectedProcess: ClaudeProcess? {
-        guard let selectedPID else { return nil }
-        return viewModel.snapshot.processes.first { $0.pid == selectedPID }
+    /// Resolved live from the current snapshot rather than captured at hover or click
+    /// time, so the card's numbers tick with the poll and the card dismisses itself when
+    /// the session exits.
+    private var cardProcess: ClaudeProcess? {
+        guard let pid = FarmCardSelection.shownPID(hovered: hoveredPID, pinned: selectedPID)
+        else { return nil }
+        return viewModel.snapshot.processes.first { $0.pid == pid }
     }
 
     /// Same rule as `selectedProcess`: live, so the modal's aggregates tick with the poll
@@ -722,9 +723,14 @@ struct FarmView: View {
             // the very animal you just clicked. The last pen row is the one that runs
             // short, which makes the bottom-right the emptiest corner of the scene.
             .overlay(alignment: .bottomTrailing) {
-                if let process = selectedProcess {
-                    FarmDetailCard(process: process) { selectedPID = nil }
-                        .padding(12)
+                if let process = cardProcess {
+                    FarmDetailCard(
+                        process: process,
+                        onClose: FarmCardSelection.isDismissable(shown: process.pid,
+                                                                 pinned: selectedPID)
+                            ? { selectedPID = nil } : nil
+                    )
+                    .padding(12)
                 }
             }
         }
