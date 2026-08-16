@@ -268,6 +268,24 @@ final class FarmAnimalTraverseTests: XCTestCase {
         XCTAssertLessThanOrEqual(longestRun(at: xs.min()!), 3, "piling up against one end")
     }
 
+    /// Every active animal must actually move, at every occupancy a pen can hold. The
+    /// traverse degrading to nothing in a crowded pen is not a graceful degradation — it
+    /// is the reported bug, unfixed, in the pens most likely to have it noticed.
+    func test_everyActiveAnimalMovesAtEveryOccupancy() {
+        var stuck: [String] = []
+        for species in AnimalSpecies.allCases {
+            for count in 1...8 {
+                let pen = placedPen(Array(repeating: .active, count: count), species: species)
+                for index in 0..<count {
+                    let xs = track(pen, index: index, through: 30).map(\.bx)
+                    let range = xs.max()! - xs.min()!
+                    if range < 8 { stuck.append("\(species) x\(count) slot \(index): \(range)px") }
+                }
+            }
+        }
+        XCTAssertEqual(stuck, [], "animals walking on the spot:\n" + stuck.joined(separator: "\n"))
+    }
+
     func test_theTraverseIsDeterministic() {
         let pen = placedPen([.active, .active])
         XCTAssertEqual(FarmAnimalPlacer.place(pen: pen, time: 17.5),

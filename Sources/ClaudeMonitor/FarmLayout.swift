@@ -40,11 +40,24 @@ enum FarmLayoutEngine {
         }
     }
 
+    /// How many animals stand side by side in a pen. The pen is built around this number
+    /// (`penSize` below) and the animals are laid out against it
+    /// (`FarmAnimalPlacer.place`), so it has to be one function: the two used to derive it
+    /// separately — sizing from the footprint, placing from how many sprites physically
+    /// fit — and disagreed whenever a pen had room for more columns than it was sized for.
+    /// The surplus columns ate the slack an active animal walks in, which left a pen of
+    /// four chickens with nowhere to go and its occupants walking on the spot.
+    static func penColumns(animalCount: Int) -> Int {
+        let n = min(animalCount, 8)
+        let rows = n <= 2 ? 1 : 2
+        return max(1, Int(ceil(Double(n) / Double(rows))))
+    }
+
     static func penSize(species: AnimalSpecies, animalCount: Int) -> (w: Int, h: Int) {
         let foot = footprint(for: species)
         let n = min(animalCount, 8)
         let rows = n <= 2 ? 1 : 2
-        let cols = Int(ceil(Double(n) / Double(rows)))
+        let cols = penColumns(animalCount: animalCount)
         let interiorW = cols * foot.w + 1
         let interiorH = foot.h + (rows - 1) + 1
         return (max(7, interiorW + 2), max(5, interiorH + 2))

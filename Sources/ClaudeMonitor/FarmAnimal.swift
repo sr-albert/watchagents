@@ -65,6 +65,10 @@ enum FarmAnimalPlacer {
     /// Rows 1 (left) and 3 (right) only — spec §5.3: rows 0/2 are front/back views,
     /// tall thin totems, and most of why the previously shipped animals looked wrong.
     /// Alternates by slot index so neighbouring animals don't all face one way.
+    ///
+    /// This is the resting facing. An `.active` animal overrides it every frame to match
+    /// its direction of travel, so two of them can face the same way — they are walking,
+    /// and where they are pointed is not a decoration to be varied.
     static func spriteRow(slotIndex: Int) -> Int {
         slotIndex % 2 == 0 ? 3 : 1
     }
@@ -154,7 +158,12 @@ enum FarmAnimalPlacer {
         let IW = iw * tile, IH = ih * tile
 
         let count = processes.count
-        let ncols = max(1, min(count, IW / (w + 4)))
+        // The same column count the pen was *built* for. Deriving it here from how many
+        // sprites happen to fit (`IW / (w + 4)`) let a pen that was sized for four columns
+        // be filled with five, and the surplus column came out of the slack each animal
+        // needs to walk in — which is why crowded pens had active animals standing still.
+        // `footprint` guarantees a column is wider than its sprite, so this always fits.
+        let ncols = FarmLayoutEngine.penColumns(animalCount: count)
         let nrows = Int(ceil(Double(count) / Double(ncols)))
         let depth = h < 34 ? 11 : 8                 // px of y separation between ranks
         let span = Double(IW - 6)
@@ -201,7 +210,12 @@ enum FarmAnimalPlacer {
                 sheet = .walk
                 frame = walkFrame(slotIndex: i, time: time)
                 by += off
-                let travel = max(0, Int(slot) - w - 4)   // 4px of air between sprite boxes
+                // 2px of air between neighbouring sprite boxes at their closest approach.
+                // Not more: the sprites are trimmed to their visible bounds, so 2px is
+                // real daylight, and every pixel spent here comes straight out of the
+                // travel of the fullest pens — at 4px a pen of eight cows had 6px to walk
+                // in, which is back to standing still.
+                let travel = max(0, Int(slot) - w - 2)
                 let (tdx, facingRight) = activeTraverse(pid: process.pid, travel: travel,
                                                         time: time)
                 bx += tdx
