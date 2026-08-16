@@ -463,7 +463,8 @@ private func namePlateRect(for sprite: Sprite, text: CGImage) -> CGRect {
 }
 
 private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSize,
-                  hoveredPID: Int?, selectedPID: Int?, into ctx: inout GraphicsContext) {
+                  hoveredPID: Int?, selectedPID: Int?, doorsOpen: Bool,
+                  into ctx: inout GraphicsContext) {
     // Leftover window space (the common case — window pixel size is rarely an exact
     // multiple of 16*scale) extends the ground fill; it never letterboxes.
     let grassBG = Color(red: 110.0 / 255, green: 190.0 / 255, blue: 90.0 / 255)
@@ -501,6 +502,18 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
         ctx.draw(pixelImage(img), in: CGRect(x: badge.x, y: badge.y, width: img.width, height: img.height))
     }
 
+    // 7b. The barn's doors, when the farmhouse is open. Painted over the shut pair the
+    // static layer already baked in, rather than rebuilt into it: that layer is cached and
+    // only regenerated when the layout changes, so putting door state in it would discard
+    // the whole barn, ground and scenery on every click.
+    if doorsOpen, let bx = scene.layout.barnX, let by = scene.layout.barnY {
+        for t in FarmScenery.barnDoorTiles(x: bx, y: by, open: true) {
+            guard let img = FarmAssets.tile(t.tile) else { continue }
+            ctx.draw(pixelImage(img),
+                     in: CGRect(x: t.x * 16, y: t.y * 16, width: 16, height: 16))
+        }
+    }
+
     // 8. Sign plates, drawn last.
     for sign in scene.signs {
         drawPlate(sign.rect, text: sign.image, into: &ctx)
@@ -534,6 +547,9 @@ struct FarmView: View {
     /// Persisted, because the panel costs the farm 240pt of the width it picks its tile
     /// scale from: someone who shuts it to get 2x animals back wants it to stay shut.
     @AppStorage("farmInfoPanelOpen") private var panelOpen = true
+    /// Whether the barn's doors are open, which is the same thing as whether the farmhouse
+    /// modal is showing — the doors are the modal's only opening animation.
+    @State private var houseOpen = false
 
     /// Resolved live from the current snapshot rather than captured at click time, so the
     /// card's numbers tick with the poll and the card dismisses itself when the session
@@ -581,6 +597,21 @@ struct FarmView: View {
         // above: content inside it scrolls, so a modal placed there would drift off
         // centre the moment the farm was scrolled.
         .overlay {
+            if houseOpen {
+                ZStack {
+                    Color.black.opacity(0.45)
+                        .ignoresSafeArea()
+                        .onTapGesture { houseOpen = false }
+                    FarmHouseModal(usage: viewModel.usageResult,
+                                   overloadSettings: viewModel.overloadSettings) {
+                        houseOpen = false
+                    }
+                }
+                .onExitCommand { houseOpen = false }
+                .transition(.opacity)
+            }
+        }
+        .overlay {
             if let pen = modalPen {
                 ZStack {
                     Color.black.opacity(0.45)
@@ -626,7 +657,7 @@ struct FarmView: View {
                              time: context.date.timeIntervalSinceReferenceDate,
                              canvasSize: size,
                              hoveredPID: hoveredPID, selectedPID: selectedPID,
-                             into: &ctx)
+                             doorsOpen: houseOpen, into: &ctx)
                     }
                     .frame(width: contentWidth, height: contentHeight)
                     // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
@@ -646,7 +677,9 @@ struct FarmView: View {
                             // pointer moves and would clobber a one-shot set.
                             let onFence = FarmHitTest.penFenceIndex(
                                 at: p, in: LastDrawnFrame.penTargets()) != nil
-                            FarmCursor.set(interactable: hit != nil || onFence)
+                            let onBarn = FarmHitTest.barnTarget(from: scene.layout)?
+                                .rect.contains(p) ?? false
+                            FarmCursor.set(interactable: hit != nil || onFence || onBarn)
                         case .ended:
                             if hoveredPID != nil { hoveredPID = nil }
                             FarmCursor.reset()
@@ -663,6 +696,14 @@ struct FarmView: View {
                             guard abs(value.translation.width) < 3,
                                   abs(value.translation.height) < 3 else { return }
                             let p = farmPoint(value.location, scale: scale)
+                            // The barn is checked first, though nothing contests it:
+                            // scenery keeps a one-tile buffer around it, so no pen or
+                            // animal can be underneath.
+                            if FarmHitTest.barnTarget(from: scene.layout)?.rect.contains(p) == true {
+                                houseOpen = true
+                                selectedPID = nil
+                                return
+                            }
                             // The fence wins over the animals. It is the pen's
                             // outline, an animal can stand against the inside of it,
                             // and someone aiming at a rail means the project.

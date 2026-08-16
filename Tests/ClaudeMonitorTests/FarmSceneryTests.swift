@@ -92,3 +92,60 @@ final class FarmSceneryTests: XCTestCase {
         }
     }
 }
+
+/// The barn is the only thing in the scene you can open. Its doors rest shut so that
+/// opening them means something — before this it stood permanently agape (tile 0074
+/// twice, a dark hole), and there was no state left to change.
+final class FarmBarnDoorTests: XCTestCase {
+    private func doors(_ tiles: [SceneryTile]) -> [Int] {
+        let gy = 3 + FarmLayoutEngine.barnH - 1
+        let cx = 4 + FarmLayoutEngine.barnW / 2
+        return [cx - 1, cx].compactMap { x in
+            tiles.last { $0.x == x && $0.y == gy }?.tile
+        }
+    }
+
+    func test_theBarnRestsWithItsDoorsShut() {
+        XCTAssertEqual(doors(FarmScenery.barnTiles(x: 4, y: 3)), [85, 87])
+    }
+
+    /// The last tile painted at each door cell is the dark opening 0074.
+    func test_theOpenDoorsAreTheDarkOpening() {
+        let open = FarmScenery.barnDoorTiles(x: 4, y: 3, open: true)
+        let gy = 3 + FarmLayoutEngine.barnH - 1
+        let cx = 4 + FarmLayoutEngine.barnW / 2
+        for x in [cx - 1, cx] {
+            XCTAssertEqual(open.last { $0.x == x && $0.y == gy }?.tile, 74)
+        }
+    }
+
+    /// 0074 is an arch with transparent corners, drawn to composite onto a wall. Laid
+    /// straight over the shut door those corners show the brown panels through, and the
+    /// barn reads as open and closed at the same time — so the wall goes down first.
+    func test_openingTheDoorsRepaintsTheWallUnderneath() {
+        let open = FarmScenery.barnDoorTiles(x: 4, y: 3, open: true)
+        let gy = 3 + FarmLayoutEngine.barnH - 1
+        let cx = 4 + FarmLayoutEngine.barnW / 2
+        for x in [cx - 1, cx] {
+            let atCell = open.filter { $0.x == x && $0.y == gy }.map(\.tile)
+            XCTAssertEqual(atCell, [73, 74], "the wall must be repainted before the opening")
+        }
+    }
+
+    /// The open state is drawn over the shut one as an overlay, so it has to land on
+    /// exactly the same two cells or the barn grows a third door.
+    func test_openAndShutDoorsOccupyTheSameCells() {
+        func cells(_ open: Bool) -> Set<TilePoint> {
+            Set(FarmScenery.barnDoorTiles(x: 4, y: 3, open: open)
+                .map { TilePoint(x: $0.x, y: $0.y) })
+        }
+        XCTAssertEqual(cells(true), cells(false))
+    }
+
+    func test_theDoorsSitOnTheBarnsGroundRow() {
+        for t in FarmScenery.barnDoorTiles(x: 4, y: 3, open: true) {
+            XCTAssertEqual(t.y, 3 + FarmLayoutEngine.barnH - 1)
+            XCTAssertTrue((4..<(4 + FarmLayoutEngine.barnW)).contains(t.x))
+        }
+    }
+}

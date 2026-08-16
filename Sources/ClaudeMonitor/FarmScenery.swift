@@ -50,9 +50,39 @@ enum FarmScenery {
         let gy = y + h - 1
         put(84, x + 1, gy)
         put(84, x + w - 2, gy)
-        put(74, x + w / 2 - 1, gy)
-        put(74, x + w / 2, gy)
+        for t in barnDoorTiles(x: x, y: y, open: false) { put(t.tile, t.x, t.y) }
         return out
+    }
+
+    /// The barn's double door, shut or open.
+    ///
+    /// Shut is `0085`/`0087` — a pair that meets under the wall's single arch, unlike
+    /// `0086` twice, which brings its own frame and reads as two front doors side by side.
+    /// Open is `0074` twice, the dark opening, which is what the barn used to wear
+    /// permanently: it stood agape at rest, so there was no state left for opening it to
+    /// change.
+    ///
+    /// There are no half-open tiles in the pack, so this is a cut rather than a swing.
+    /// Callers draw the open state as an overlay on top of the shut one — see `FarmView` —
+    /// rather than rebuilding the barn, because the barn lives in the cached static layer
+    /// and door state would throw that cache away on every click.
+    ///
+    /// Opening therefore repaints the wall (`0073`) before the opening. `0074` is an arch
+    /// with transparent corners, meant to composite onto a wall; laid straight over the
+    /// shut door its corners let the brown door panels show through, and the barn reads as
+    /// having doors both open and closed at once.
+    ///
+    /// Returned in draw order, so a caller paints them front to back as given.
+    static func barnDoorTiles(x: Int, y: Int, open: Bool) -> [SceneryTile] {
+        let gy = y + FarmLayoutEngine.barnH - 1
+        let cx = x + FarmLayoutEngine.barnW / 2
+        guard open else {
+            return [SceneryTile(x: cx - 1, y: gy, tile: 85),
+                    SceneryTile(x: cx, y: gy, tile: 87)]
+        }
+        return [cx - 1, cx].flatMap { dx in
+            [SceneryTile(x: dx, y: gy, tile: 73), SceneryTile(x: dx, y: gy, tile: 74)]
+        }
     }
 
     static func decorate(layout: FarmLayout, dirt: Set<TilePoint>) -> [SceneryTile] {

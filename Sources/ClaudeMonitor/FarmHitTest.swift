@@ -17,6 +17,12 @@ struct PenTarget: Equatable {
     let innerRect: CGRect
 }
 
+/// The barn, as a click target: the whole building, in the same 1x tile-pixel space as
+/// the others. There is at most one per scene, and a layout can have none.
+struct BarnTarget: Equatable {
+    let rect: CGRect
+}
+
 /// Maps a point in the farm to the session under it. Bounding boxes only — per-pixel
 /// alpha testing would make the gaps between a cow's legs un-clickable for no benefit,
 /// since animals are already spaced far enough apart that their boxes rarely overlap.
@@ -78,6 +84,18 @@ enum FarmHitTest {
     /// point, so the whole pen stays clickable rather than collapsing to nothing.
     static func penFenceIndex(at point: CGPoint, in targets: [PenTarget]) -> Int? {
         targets.first { $0.rect.contains(point) && !$0.innerRect.contains(point) }?.index
+    }
+
+    /// The whole building is the target, not the doorway. The doors are two tiles wide,
+    /// and a 32px target inside a 112px building would be a pixel-hunt for the largest,
+    /// least missable object in the scene. Nothing else is clickable underneath: scenery
+    /// keeps a one-tile buffer around the barn, so it cannot overlap a pen.
+    static func barnTarget(from layout: FarmLayout) -> BarnTarget? {
+        guard let x = layout.barnX, let y = layout.barnY else { return nil }
+        let body = CGRect(x: CGFloat(x) * tile, y: CGFloat(y) * tile,
+                          width: CGFloat(FarmLayoutEngine.barnW) * tile,
+                          height: CGFloat(FarmLayoutEngine.barnH) * tile)
+        return BarnTarget(rect: body.insetBy(dx: -padding, dy: -padding))
     }
 
     /// Tile size in 1× pixels. Pen coordinates are tiles; hit testing is in pixels.

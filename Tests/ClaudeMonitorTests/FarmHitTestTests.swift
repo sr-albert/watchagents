@@ -141,3 +141,36 @@ final class FarmPenHitTestTests: XCTestCase {
         XCTAssertEqual(FarmHitTest.penFenceIndex(at: CGPoint(x: 24 * 16, y: 52), in: targets), 1)
     }
 }
+
+/// Clicking the barn opens the farmhouse. The whole building is the target, not the
+/// doorway: the doors are two tiles wide and a 32px target in a 112px building is a
+/// pixel-hunt for the one thing in the scene you cannot miss by eye.
+final class FarmBarnHitTestTests: XCTestCase {
+    private func layout(barn: Bool) -> FarmLayout {
+        FarmLayout(pens: [], laneYs: [], barnX: barn ? 4 : nil, barnY: barn ? 3 : nil,
+                   cols: 40, rows: 24, requiredRows: 24)
+    }
+
+    func test_thereIsNoTargetWhenTheLayoutHasNoBarn() {
+        XCTAssertNil(FarmHitTest.barnTarget(from: layout(barn: false)))
+    }
+
+    func test_theTargetCoversTheWholeBuilding() {
+        let target = FarmHitTest.barnTarget(from: layout(barn: true))!
+        let w = FarmLayoutEngine.barnW, h = FarmLayoutEngine.barnH
+
+        XCTAssertTrue(target.rect.contains(CGPoint(x: 4 * 16 + 1, y: 3 * 16 + 1)), "top-left")
+        XCTAssertTrue(target.rect.contains(CGPoint(x: (4 + w) * 16 - 1, y: (3 + h) * 16 - 1)),
+                      "bottom-right")
+        XCTAssertTrue(target.rect.contains(CGPoint(x: (4 + w / 2) * 16, y: (3 + h - 1) * 16 + 8)),
+                      "the doorway itself")
+    }
+
+    func test_openGroundBesideTheBarnIsNotTheBarn() {
+        let target = FarmHitTest.barnTarget(from: layout(barn: true))!
+        XCTAssertFalse(target.rect.contains(CGPoint(x: (4 + FarmLayoutEngine.barnW) * 16 + 20,
+                                                    y: 3 * 16 + 8)))
+        XCTAssertFalse(target.rect.contains(CGPoint(x: 4 * 16 + 8,
+                                                    y: (3 + FarmLayoutEngine.barnH) * 16 + 20)))
+    }
+}
