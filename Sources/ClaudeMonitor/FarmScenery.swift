@@ -133,20 +133,25 @@ enum FarmScenery {
                     for (i, n) in [93, 93].enumerated() {
                         if clear(hx + i, hy) { put(n, hx + i, hy); mark(hx + i, hy) }
                     }
-                    if clear(hx, hy + 1) { put(94, hx, hy + 1); mark(hx, hy + 1) }
+                    if clear(hx, hy + 1) { put(93, hx, hy + 1); mark(hx, hy + 1) }
                     if clear(hx + 1, hy + 1) { put(93, hx + 1, hy + 1); mark(hx + 1, hy + 1) }
                 }
             }
         }
 
-        // Mushrooms and sprouts only on cells that are already grass-tuft, and only
+        // Mushrooms only on cells that are already grass-tuft, and only
         // at ~22-26% — keeps them associated with the rough ground (§6.3).
         for i in 0..<300 {
             let x = StableHash.pick(layout.cols, i, 1, seed0)
             let y = StableHash.pick(layout.rows, i, 2, seed0)
             if clear(x, y), FarmGround.grassTile(x: x, y: y) == FarmGround.tuft,
                StableHash.pick(100, i, 3) < 26 {
-                put(StableHash.pick(4, i, 4) == 0 ? 29 : 17, x, y)
+                // Mushrooms (0029) only. The 0017 sprouts that used to share this pass
+                // are two thin stems inside a heavy dark outline: at farm scale the
+                // green all but disappears and they read as random dark squiggles on
+                // the lawn, which is what a viewer flagged them as.
+                guard StableHash.pick(4, i, 4) == 0 else { continue }
+                put(29, x, y)
                 mark(x, y)
             }
         }
@@ -177,7 +182,7 @@ enum FarmScenery {
             let w = FarmLayoutEngine.barnW, h = FarmLayoutEngine.barnH
             placeProp(93, bx + w, by + h - 2)       // hay, right shoulder
             placeProp(93, bx + w, by + h - 1)       // hay, right shoulder
-            placeProp(94, bx + w + 1, by + h - 1)   // hay, right shoulder
+            placeProp(94, bx + w + 1, by + h - 1)   // beehive, beside the hay
             placeProp(116, bx - 1, by + h - 1)      // pitchfork, left wall
             placeProp(106, bx + w + 1, by + h - 2)  // barrel, right shoulder
             placeProp(107, bx + w + 2, by + h - 1)  // bucket, right shoulder

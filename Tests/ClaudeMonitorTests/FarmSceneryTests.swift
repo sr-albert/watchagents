@@ -71,6 +71,19 @@ final class FarmSceneryTests: XCTestCase {
         XCTAssertEqual(scenery.filter { flora.contains($0.tile) }, [])
     }
 
+    /// The 0017 sprout is two thin stems inside a heavy dark outline. At farm scale the
+    /// green all but vanishes and it reads as a dark squiggle dropped on the lawn, so it
+    /// is out; mushrooms carry the ground detail instead. The 0094 beehive stays a
+    /// deliberate single prop by the barn and never joins the hay yard, where it just
+    /// looks like a hay bale someone drew a hole in.
+    func test_theLawnCarriesNoSproutsAndTheHayYardIsAllHay() {
+        let (layout, dirt) = fixture(8)
+        let scenery = FarmScenery.decorate(layout: layout, dirt: dirt)
+
+        XCTAssertFalse(scenery.contains { $0.tile == 17 })
+        XCTAssertLessThanOrEqual(scenery.filter { $0.tile == 94 }.count, 1)
+    }
+
     func test_staysInsideTheCanvas() {
         let (layout, dirt) = fixture(8)
         for s in FarmScenery.decorate(layout: layout, dirt: dirt) {
