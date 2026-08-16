@@ -154,10 +154,11 @@ struct FarmInfoPanel: View {
         .background(
             RoundedRectangle(cornerRadius: 4).fill(FarmPalette.woodHi.opacity(0.22))
         )
-        // Same hand as the fence: a row opens the same modal a fence click does.
-        .onHover { inside in
-            inside ? FarmCursor.set(interactable: true) : FarmCursor.reset()
-        }
+        // Same hand as the fence: a row opens the same modal a fence click does. Leaving
+        // a row returns to the farm's own arrow and never to `FarmCursor.reset()`, which
+        // is AppKit's system arrow — that belongs to the pointer leaving the farm
+        // altogether, and using it here flashes the cursor between two adjacent rows.
+        .onHover { inside in FarmCursor.set(interactable: inside) }
         .accessibilityLabel("\(row.label), \(row.sessions) sessions")
     }
 

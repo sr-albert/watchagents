@@ -709,9 +709,10 @@ struct FarmView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { inside in
-            inside ? FarmCursor.set(interactable: true) : FarmCursor.reset()
-        }
+        // Not `FarmCursor.reset()` on the way out: the tab is flush against the canvas,
+        // whose `onContinuousHover` re-asserts the cursor on every mouse-move event, and
+        // the two would race across the seam and flicker the pixel arrow to AppKit's.
+        .onHover { inside in FarmCursor.set(interactable: inside) }
         .help(panelOpen ? "Hide farm information" : "Show farm information")
         .accessibilityLabel(panelOpen ? "Hide farm information" : "Show farm information")
     }
