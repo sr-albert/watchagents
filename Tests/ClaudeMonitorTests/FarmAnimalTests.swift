@@ -311,3 +311,70 @@ final class FarmAnimalTraverseTests: XCTestCase {
         XCTAssertNotEqual(deltaA, deltaB, "both animals move identically")
     }
 }
+
+/// An animal that walks to one end of its pen and then goes idle must stay there. Before
+/// this it snapped back to its slot centre — it had walked, and then un-walked.
+final class FarmAnimalRestingAnchorTests: XCTestCase {
+    private func pen(_ state: SessionState, since: Double?) -> PlacedPen {
+        var p = ClaudeProcess(pid: 200, cpu: 0, mem: 0, cwd: "/proj")
+        p.state = state
+        p.idleSince = since.map { Date(timeIntervalSinceReferenceDate: $0) }
+        let farmPen = FarmPen(cwd: "/proj", label: "proj", species: .cow, processes: [p])
+        let size = FarmLayoutEngine.penSize(species: .cow, animalCount: 1)
+        return PlacedPen(pen: farmPen, x: 5, y: 5, w: size.w, h: size.h, gate: .south,
+                         gateX: 5 + size.w / 2)
+    }
+
+    private func bx(_ state: SessionState, since: Double?, at time: Double) -> Int {
+        FarmAnimalPlacer.place(pen: pen(state, since: since), time: time)[0].bx
+    }
+
+    /// "Does not reset", stated directly: the frame it stops walking and the frame it is
+    /// resting are the same place.
+    func test_theAnimalRestsWhereItStoppedWalking() {
+        for stop in [3.1, 17.6, 41.3, 88.9] {
+            let stopped = bx(.active, since: nil, at: stop)
+            let resting = bx(.idle, since: stop, at: stop)
+            // Within the idle wander's own ±3px, which rides on top of the anchor from the
+            // first frame — the animal is resting *there*, not standing to attention.
+            XCTAssertLessThanOrEqual(abs(resting - stopped), 3,
+                                     "jumped on going idle at t=\(stop): \(stopped) -> \(resting)")
+        }
+    }
+
+    /// Stopping at different points in the traverse must rest at different points, or the
+    /// anchor is not really being remembered — it is just a differently-placed constant.
+    func test_stoppingAtDifferentTimesRestsInDifferentPlaces() {
+        let stops = stride(from: 0.0, to: 2.5, by: 0.25).map { bx(.idle, since: $0, at: 60) }
+        XCTAssertGreaterThan(Set(stops).count, 4, "every stop resolves to the same anchor")
+    }
+
+    /// The wander is still a wander: it oscillates about the remembered spot rather than
+    /// carrying the animal away from it (spec §5.6).
+    func test_theRestingAnimalStillWandersAboutItsAnchor() {
+        let anchor = bx(.idle, since: 41.3, at: 41.3)
+        let xs = stride(from: 41.3, through: 161.3, by: 0.17).map { bx(.idle, since: 41.3, at: $0) }
+        for x in xs {
+            XCTAssertLessThanOrEqual(abs(x - anchor), 4, "wandered off its anchor")
+        }
+        XCTAssertGreaterThan(Set(xs).count, 1, "the wander stopped happening")
+    }
+
+    /// Freezing is the same animal ten minutes later. Without this it teleports at the
+    /// ten-minute mark, which is the same complaint on a delay.
+    func test_freezingHoldsTheSameSpotAsResting() {
+        // Against the active position rather than the idle one: frozen is a held frame
+        // with no wander, so the two are exactly equal or the anchor is not being applied.
+        XCTAssertEqual(bx(.frozen, since: 41.3, at: 700), bx(.active, since: nil, at: 41.3))
+    }
+
+    /// Every existing caller and fixture passes no `idleSince`. Those animals must sit
+    /// where they always have — the centre of their slot.
+    func test_withoutAStopTimeTheAnimalRestsAtItsSlotCentre() {
+        let withNoHistory = bx(.idle, since: nil, at: 0)
+        let active = bx(.active, since: nil, at: 0)
+        // Slot centre is where the traverse is at its own zero crossing, which the wander
+        // then oscillates about; the two need only agree to within the wander's amplitude.
+        XCTAssertLessThanOrEqual(abs(withNoHistory - active), 12)
+    }
+}

@@ -6,6 +6,11 @@ struct ClaudeProcess: Equatable {
     let mem: Double
     var cwd: String = "(unknown)"
     var state: SessionState = .idle
+    /// When this session stopped working, from `SessionStateTracker`. The farm anchors a
+    /// resting animal at the spot its walk ended, and this is the instant that walk
+    /// ended — see `FarmAnimalPlacer.place`. Nil until a session has gone quiet, and for
+    /// any caller that builds a `ClaudeProcess` without a tracker behind it.
+    var idleSince: Date?
 }
 
 struct ProcessSnapshot: Equatable {

@@ -61,6 +61,10 @@ enum SessionStateEvaluator {
 final class SessionStateTracker {
     private var history: [Int: SessionStateEvaluator.History] = [:]
 
+    /// Read-only view of what the tracker remembers about a pid. `idleSince` is the farm's
+    /// resting anchor (`FarmAnimalPlacer.place`) as well as the frozen escalation's clock.
+    func history(for pid: Int) -> SessionStateEvaluator.History? { history[pid] }
+
     func states(for snapshot: ProcessSnapshot, now: Date, basis: OverloadBasis) -> [Int: SessionState] {
         let currentPIDs = Set(snapshot.processes.map { $0.pid })
         history = history.filter { currentPIDs.contains($0.key) }

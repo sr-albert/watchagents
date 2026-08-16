@@ -56,6 +56,7 @@ final class MonitorViewModel: ObservableObject {
                 let processes = rawSnapshot.processes.map { process -> ClaudeProcess in
                     var updated = process
                     updated.state = states[process.pid] ?? .idle
+                    updated.idleSince = tracker.history(for: process.pid)?.idleSince
                     return updated
                 }
                 let result = ProcessSnapshot(

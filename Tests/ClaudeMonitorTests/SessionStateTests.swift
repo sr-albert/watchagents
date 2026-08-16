@@ -175,3 +175,53 @@ final class SessionStateTrackerTests: XCTestCase {
         XCTAssertEqual(idleAgainStates[11], .idle)
     }
 }
+
+/// The farm anchors an animal that stops walking at the spot it stopped, and the instant
+/// it stopped is `idleSince` — already tracked here for the frozen escalation, now also
+/// read by `FarmAnimalPlacer`.
+@MainActor
+final class SessionStateTrackerIdleSinceTests: XCTestCase {
+    private func snapshot(cpu: Double) -> ProcessSnapshot {
+        ProcessSnapshot(processes: [ClaudeProcess(pid: 1, cpu: cpu, mem: 5)],
+                        cpuTotal: cpu, memTotal: 5, sessionCount: 1)
+    }
+
+    func test_idleSinceIsUnsetWhileBusy() {
+        let tracker = SessionStateTracker()
+        _ = tracker.states(for: snapshot(cpu: 50), now: Date(), basis: .both)
+        XCTAssertNil(tracker.history(for: 1)?.idleSince)
+    }
+
+    func test_idleSinceIsTheMomentTheSessionStoppedWorking() {
+        let tracker = SessionStateTracker()
+        let t0 = Date()
+        _ = tracker.states(for: snapshot(cpu: 50), now: t0, basis: .both)
+        let stopped = t0.addingTimeInterval(2)
+        _ = tracker.states(for: snapshot(cpu: 0), now: stopped, basis: .both)
+
+        XCTAssertEqual(tracker.history(for: 1)?.idleSince, stopped)
+    }
+
+    /// It marks the moment work *stopped*, not the latest poll — otherwise the anchor
+    /// would creep forward every two seconds and the animal would drift across the pen
+    /// while standing still.
+    func test_idleSinceDoesNotAdvanceWhileTheSessionStaysIdle() {
+        let tracker = SessionStateTracker()
+        let t0 = Date()
+        _ = tracker.states(for: snapshot(cpu: 50), now: t0, basis: .both)
+        let stopped = t0.addingTimeInterval(2)
+        _ = tracker.states(for: snapshot(cpu: 0), now: stopped, basis: .both)
+        _ = tracker.states(for: snapshot(cpu: 0), now: stopped.addingTimeInterval(30), basis: .both)
+
+        XCTAssertEqual(tracker.history(for: 1)?.idleSince, stopped)
+    }
+
+    func test_idleSinceClearsWhenTheSessionPicksUpAgain() {
+        let tracker = SessionStateTracker()
+        let t0 = Date()
+        _ = tracker.states(for: snapshot(cpu: 0), now: t0, basis: .both)
+        _ = tracker.states(for: snapshot(cpu: 90), now: t0.addingTimeInterval(2), basis: .both)
+
+        XCTAssertNil(tracker.history(for: 1)?.idleSince)
+    }
+}

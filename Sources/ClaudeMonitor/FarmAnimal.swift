@@ -145,6 +145,15 @@ enum FarmAnimalPlacer {
         return (Int(offset.rounded()), u < 0.5)
     }
 
+    /// Room an animal has to walk inside its own lattice slot, leaving 2px of air between
+    /// neighbouring sprite boxes at their closest approach. Not more: the sprites are
+    /// trimmed to their visible bounds, so 2px is real daylight, and every pixel spent
+    /// here comes straight out of the travel of the fullest pens — at 4px a pen of eight
+    /// cows had 6px to walk in, which is back to standing still.
+    private static func travel(slot: Double, spriteW: Int) -> Int {
+        max(0, Int(slot) - spriteW - 2)
+    }
+
     static func place(pen: PlacedPen, time: Double) -> [AnimalPlacement] {
         let species = pen.pen.species
         let processes = pen.pen.processes
@@ -186,19 +195,32 @@ enum FarmAnimalPlacer {
             // except `.active`, which overrides it to match its direction of travel.
             var facingRow = spriteRow(slotIndex: i)
 
+            // Where the animal's walk ended, if it has stopped: the traverse evaluated at
+            // the instant it went quiet. A resting animal stands here instead of at its
+            // slot centre, so going idle no longer snaps it back across the pen it just
+            // walked. Pure, like everything else here — the memory is `idleSince`, which
+            // `SessionStateTracker` has always kept for the frozen escalation.
+            let restingDx = process.idleSince.map {
+                activeTraverse(pid: process.pid, travel: travel(slot: slot, spriteW: w),
+                               time: $0.timeIntervalSinceReferenceDate).dx
+            } ?? 0
+
             switch process.state {
             case .idle:
                 // eat sheet col 2, head down, hangs back at the rail, plus anchored
-                // wander (spec §5.6).
+                // wander (spec §5.6) about wherever it stopped.
                 sheet = .eat; frame = 2
                 by -= off
                 let (wdx, wdy) = idleWander(pid: process.pid, time: time)
-                bx += wdx; by += wdy
+                bx += restingDx + wdx; by += wdy
             case .frozen:
                 // eat sheet col 3, held frame — no motion, no time dependence at all.
+                // Holds the resting anchor too: a frozen session is an idle one ten
+                // minutes on, and without this it teleports at the ten-minute mark.
+                // The back-of-pen `by` is §5.2's own cue and is unaffected.
                 sheet = .eat; frame = 3
                 by -= off + 2
-                bx += 4
+                bx += restingDx
             case .active:
                 // walk sheet, forward, overlaps the bottom rail, traversing its slot
                 // (spec §5.2). The static `bx += off` the other walking states use is
@@ -210,14 +232,8 @@ enum FarmAnimalPlacer {
                 sheet = .walk
                 frame = walkFrame(slotIndex: i, time: time)
                 by += off
-                // 2px of air between neighbouring sprite boxes at their closest approach.
-                // Not more: the sprites are trimmed to their visible bounds, so 2px is
-                // real daylight, and every pixel spent here comes straight out of the
-                // travel of the fullest pens — at 4px a pen of eight cows had 6px to walk
-                // in, which is back to standing still.
-                let travel = max(0, Int(slot) - w - 2)
-                let (tdx, facingRight) = activeTraverse(pid: process.pid, travel: travel,
-                                                        time: time)
+                let (tdx, facingRight) = activeTraverse(
+                    pid: process.pid, travel: travel(slot: slot, spriteW: w), time: time)
                 bx += tdx
                 facingRow = facingRight ? 3 : 1
             case .overloaded:
