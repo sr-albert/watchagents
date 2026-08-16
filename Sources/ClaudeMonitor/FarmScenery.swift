@@ -104,108 +104,18 @@ enum FarmScenery {
                  FarmLayoutEngine.laneH + 2)
         }
 
-        // ---- small helpers used by orchard rows and treeline fringe -------------
-        func smallTree(_ x: Int, _ y: Int, _ autumn: Bool) {
-            put(autumn ? 3 : 4, x, y)
-            put(autumn ? 15 : 16, x, y + 1)
-        }
-
-        // ---- tree stands: the load-bearing rule from §6.2 -----------------------
-        // Woodland is a dense stand of the 2-tall single tree, never the 0006-0008 /
-        // 0018-0020 "canopy band" an earlier draft of the spec called for: those are
-        // forest-*interior* pieces whose outlines are drawn to continue into their
-        // neighbours, so with open grass above them the top arcs dangle and the whole
-        // band reads as an upside-down cave ceiling. A single tree has an unambiguous
-        // silhouette — canopy on top, trunk at the bottom — and cannot read upside
-        // down at any density.
-        func stand(_ x0In: Int, _ x1In: Int, _ y0: Int, _ y1: Int, _ seed: Int,
-                   density: Double = 0.80, autumn: Double = 0.18, ramp: [Double] = [1]) {
-            let x0 = max(0, x0In), x1 = min(layout.cols, x1In)
-            let autumnPct = Int(autumn * 100)
-            var items: [(y: Int, x: Int, autumn: Bool)] = []
-            for (rowIndex, y) in (max(0, y0)..<min(layout.rows, y1)).enumerated() {
-                let pct = Int(density * ramp[min(rowIndex, ramp.count - 1)] * 100)
-                for x in x0..<x1 {
-                    let h = StableHash.of(x, y, seed)
-                    guard Int(h % 100) < pct else { continue }
-                    let yy = y + Int((h >> 7) % 2)
-                    guard clear(x, yy, 1, 2) else { continue }
-                    // Reserve the TRUNK cell only. Marking the whole 1×2 stops trees
-                    // from nesting into each other and collapses the mass straight back
-                    // into evenly-spaced lollipops — the original failure this replaces.
-                    mark(x, yy + 1)
-                    items.append((yy, x, Int((h >> 13) % 100) < autumnPct))
-                }
-            }
-            // Back to front, so nearer canopies overlap and hide the trunks behind them.
-            for it in items.sorted(by: { $0.y == $1.y ? $0.x < $1.x : $0.y < $1.y }) {
-                smallTree(it.x, it.y, it.autumn)
-            }
-        }
-
-        // Planted orchard rows — a 3-tile lattice with alternating row offset, so it
-        // reads as agriculture and contrasts with the wild treeline (§6.3).
-        func orchard(_ x0: Int, _ y0: Int, _ x1: Int, _ y1: Int, _ seed: Int) {
-            var items: [(y: Int, x: Int, autumn: Bool)] = []
-            var j = 0
-            var y = y0
-            while y < y1 - 1 {
-                let off = j % 2 != 0 ? 1 : 0
-                var x = x0 + off
-                while x < x1 {
-                    if clear(x, y, 1, 2) {
-                        mark(x, y, 1, 2)
-                        items.append((y, x, StableHash.pick(100, x, y, seed) < 22))
-                    }
-                    x += 3
-                }
-                j += 1
-                y += 3
-            }
-            for it in items.sorted(by: { $0.y == $1.y ? $0.x < $1.x : $0.y < $1.y }) {
-                smallTree(it.x, it.y, it.autumn)
-            }
-        }
-
-        // Seeded scatter of small props, retried up to 12x per requested count so a
-        // crowded target rect still yields close to `n` items.
-        func scatter(_ cands: [Int], _ x0: Int, _ y0: Int, _ x1: Int, _ y1: Int, _ nIn: Int, _ seed: Int) {
-            var n = nIn
-            guard n > 0 else { return }
-            let xUpper = max(x0 + 1, x1), yUpper = max(y0 + 1, y1)
-            var i = 0
-            let maxIter = n * 12
-            while i < maxIter && n > 0 {
-                let x = x0 + StableHash.pick(xUpper - x0, seed, i, 1)
-                let y = y0 + StableHash.pick(yUpper - y0, seed, i, 2)
-                if clear(x, y) {
-                    let c = cands[StableHash.pick(cands.count, seed, i, 3)]
-                    put(c, x, y)
-                    mark(x, y)
-                    n -= 1
-                }
-                i += 1
-            }
-        }
-
-        // ---- woodland frame ------------------------------------------------------
-        // Dense at the outer edge and thinning inward. The ramp is what makes the
-        // treeline ragged; without it the stand is a solid ribbon with a straight
-        // inner edge, which is just the canopy band's problem in a different costume.
-        let ramp = [1.0, 0.85, 0.55, 0.30]
-        let marginT = FarmLayoutEngine.marginT, frameB = FarmLayoutEngine.frameB
-        stand(0, layout.cols, 0, marginT, seed0 * 3 + 1, ramp: ramp)
-        stand(0, layout.cols, layout.rows - frameB, layout.rows - 1, seed0 * 3 + 4,
-              ramp: ramp.reversed())
-        stand(0, FarmLayoutEngine.marginL - 1, marginT, layout.rows - frameB,
-              seed0 * 3 + 2, density: 0.72)
-        stand(layout.cols - FarmLayoutEngine.marginR + 1, layout.cols, marginT,
-              layout.rows - frameB, seed0 * 3 + 3, density: 0.72)
-        // A copse behind the barn nests it into the landscape.
-        if let bx = layout.barnX, let by = layout.barnY, by >= 4 {
-            stand(bx - 1, bx + FarmLayoutEngine.barnW + 1, by - 2, by, seed0 * 3 + 5,
-                  density: 0.75)
-        }
+        // ---- no woodland frame ----------------------------------------------
+        // The scene has no treeline. Two attempts at one both failed on the same
+        // problem: the pack's canopy pieces (0006-0008 over 0018-0020) are
+        // forest-*interior* art whose outlines run into their neighbours, so against
+        // open grass the top arcs dangle and the band reads upside down; and the single
+        // tree (0004 over 0016) packs into a sawtooth, because a canopy sits directly on
+        // its neighbour's trunk and leaves nothing but a row of the notches cut into the
+        // canopy's base. An empty margin looks better than either, and it is what the
+        // farm is for — the pens are the content.
+        //
+        // Tiles 0006-0011 and 0018-0023 are unused anywhere in the design; the test
+        // suite pins that so a future pass cannot reintroduce them by accident.
 
         // ---- leftover space in the last row: clustered, not a sprinkle (§6.3) ----
         if !layout.pens.isEmpty {
@@ -216,31 +126,18 @@ enum FarmScenery {
                 let lastX = lastRowPens.map { $0.x + $0.w }.max() ?? 0
                 let gapw = layout.cols - 3 - (lastX + 3)
                 if gapw > 10 {
-                    let ox = layout.cols - 3 - 11
-                    orchard(ox, lastRowY, ox + 11, lastRowY + min(lastRowH, 7), seed0 * 7)
-                    scatter([5, 5, 28, 27], ox - 2, lastRowY - 1, ox + 12,
-                            lastRowY + lastRowH + 1, 10, seed0 * 11)
-                    // A tidy hay yard gives the open lawn a destination.
+                    // A tidy hay yard gives the open lawn a destination. It is the only
+                    // thing planted out here now: a sprinkle of bushes across open ground
+                    // is confetti, and confetti was the complaint.
                     let hx = lastX + 4, hy = lastRowY + 1
                     for (i, n) in [93, 93].enumerated() {
                         if clear(hx + i, hy) { put(n, hx + i, hy); mark(hx + i, hy) }
                     }
                     if clear(hx, hy + 1) { put(94, hx, hy + 1); mark(hx, hy + 1) }
                     if clear(hx + 1, hy + 1) { put(93, hx + 1, hy + 1); mark(hx + 1, hy + 1) }
-                    scatter([5, 5, 28], lastX + 2, lastRowY + 2,
-                            lastX + 9, lastRowY + lastRowH + 1, 5, seed0 * 17)
                 }
             }
         }
-
-        // Hedge shoulders break up the road.
-        for ly in layout.laneYs {
-            scatter([5, 28, 27], FarmLayoutEngine.marginL, ly - 1,
-                    layout.cols - FarmLayoutEngine.marginR, ly + FarmLayoutEngine.laneH + 1,
-                    12, ly * 97 + seed0)
-        }
-        // General lawn scatter — a few clustered features, not a uniform fill.
-        scatter([5, 5, 28, 27], 2, 2, layout.cols - 2, layout.rows - 2, 12, seed0 * 13)
 
         // Mushrooms and sprouts only on cells that are already grass-tuft, and only
         // at ~22-26% — keeps them associated with the rough ground (§6.3).

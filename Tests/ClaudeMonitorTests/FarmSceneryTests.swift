@@ -45,55 +45,30 @@ final class FarmSceneryTests: XCTestCase {
                        FarmScenery.decorate(layout: layout, dirt: dirt))
     }
 
-    /// Canopy tops, either season. `smallTree` draws 0004 (or autumn 0003) over a trunk.
-    private func canopyCells(_ scenery: [SceneryTile]) -> Set<TilePoint> {
-        Set(scenery.filter { $0.tile == 3 || $0.tile == 4 }
-                   .map { TilePoint(x: $0.x, y: $0.y) })
-    }
-
-    func test_woodlandIsDenseStandsAndNotRetiredCanopyBands() {
-        // Spec §6.2, as corrected 2026-08-16: 0006-0008 over 0018-0020 are forest-
-        // *interior* pieces whose outlines are drawn to continue into their neighbours.
-        // With open grass above, the top arcs dangle and the band reads upside down.
-        // Woodland is dense stands of the 2-tall single tree instead — packed tightly
-        // enough that canopies touch, rather than standing apart as lollipops.
+    func test_retiredCanopyBandTilesNeverAppear() {
+        // 0006-0008 over 0018-0020 (and the autumn variants) are forest-interior pieces:
+        // their outlines are drawn to continue into neighbouring tiles, so against open
+        // grass the top arcs dangle and the band reads as an upside-down cave ceiling.
+        // They are out of the design; this pins them out.
         let (layout, dirt) = fixture(8)
         let scenery = FarmScenery.decorate(layout: layout, dirt: dirt)
 
         let retired: Set<Int> = [6, 7, 8, 9, 10, 11, 18, 19, 20, 21, 22, 23]
-        XCTAssertFalse(scenery.contains { retired.contains($0.tile) },
-                       "canopy-band tiles are retired from the design — they read upside down")
-
-        let canopy = canopyCells(scenery)
-        XCTAssertGreaterThan(canopy.count, 40, "hardly any woodland was placed")
-        // A neighbour one row up or down still touches: placement jitters trees by a
-        // tile vertically, and a canopy at (x+1, y+1) sits directly beside this tree's
-        // trunk. Same-row-only adjacency would score a perfectly dense stand at ~0.6.
-        let touching = canopy.filter { cell in
-            (-1...1).contains { dy in
-                canopy.contains(TilePoint(x: cell.x - 1, y: cell.y + dy))
-                    || canopy.contains(TilePoint(x: cell.x + 1, y: cell.y + dy))
-            }
-        }
-        XCTAssertGreaterThan(Double(touching.count) / Double(canopy.count), 0.75,
-                             "trees stand apart — that is a field of lollipops, not a stand")
+        XCTAssertFalse(scenery.contains { retired.contains($0.tile) })
     }
 
-    /// Measured on the *bottom* treeline, not the top. The top stand's inner rows are
-    /// already blocked by the one-tile occupancy buffer around the first row of pens, so
-    /// it thins there whatever the ramp says — flattening the ramp to `[1.0]` leaves the
-    /// top band's row counts completely unchanged, which makes a top-edge assertion a
-    /// test that cannot fail. Below the last pen row the ground is open and the ramp is
-    /// the only thing shaping the band: ramped it measures 5/8/19 inward-to-outward,
-    /// flattened 15/18/23.
-    func test_theTreelineThinsInwardFromTheOuterEdge() {
+    /// No trees and no scattered bushes anywhere. Two attempts at a treeline both read
+    /// badly (see the note in `decorate`), and sprinkling single bushes across open
+    /// ground is confetti. What decorates the scene now is the farm itself — the barn and
+    /// its yard, the pens, the roads, the hay — over ground detail. Pinned so a later
+    /// pass has to change this test deliberately rather than by accident.
+    func test_nothingPlantsTreesOrBushes() {
         let (layout, dirt) = fixture(8)
-        let canopy = canopyCells(FarmScenery.decorate(layout: layout, dirt: dirt))
-        let outermost = canopy.filter { $0.y == layout.rows - 2 }.count
-        let innermost = canopy.filter { $0.y == layout.rows - 4 }.count
+        let scenery = FarmScenery.decorate(layout: layout, dirt: dirt)
 
-        XCTAssertGreaterThan(outermost, innermost * 2,
-                             "the treeline is not thinning inward — the density ramp is not biting")
+        // 0003/0004 canopies over 0015/0016 trunks, and the 0005/0027/0028 bushes.
+        let flora: Set<Int> = [3, 4, 5, 15, 16, 27, 28]
+        XCTAssertEqual(scenery.filter { flora.contains($0.tile) }, [])
     }
 
     func test_staysInsideTheCanvas() {
