@@ -531,6 +531,9 @@ struct FarmView: View {
     /// snapshot and a project that exits shifts every index after it, which would leave
     /// an open modal silently showing a different project.
     @State private var modalCWD: String?
+    /// Persisted, because the panel costs the farm 240pt of the width it picks its tile
+    /// scale from: someone who shuts it to get 2x animals back wants it to stay shut.
+    @AppStorage("farmInfoPanelOpen") private var panelOpen = true
 
     /// Resolved live from the current snapshot rather than captured at click time, so the
     /// card's numbers tick with the poll and the card dismisses itself when the session
@@ -551,87 +554,20 @@ struct FarmView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GeometryReader { geo in
-                let (scale, rawLayout) = FarmScene.selectScaleAndLayout(pens: pens, width: geo.size.width, height: geo.size.height)
-                let scene = buildScene(pens: pens, layout: rawLayout)
-                let tile = CGFloat(16 * scale)
-                let contentWidth = max(geo.size.width, CGFloat(scene.contentCols) * tile)
-                let contentHeight = max(geo.size.height, CGFloat(scene.contentRows) * tile)
-
-                ScrollView(.vertical, showsIndicators: true) {
-                    // The fastest thing on screen is the 6fps walk cycle (bounce is
-                    // 2Hz, the pulse 1.2Hz) — `.animation` alone redraws at 60-120Hz
-                    // even when every animal is idle/frozen, which spec §5.1 says is
-                    // the common case. Throttling to 12Hz loses nothing visible and
-                    // cuts redraws 5-10x for a scene that's usually motionless.
-                    TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { context in
-                        Canvas { ctx, size in
-                            draw(scene: scene, scale: scale,
-                                 time: context.date.timeIntervalSinceReferenceDate,
-                                 canvasSize: size,
-                                 hoveredPID: hoveredPID, selectedPID: selectedPID,
-                                 into: &ctx)
-                        }
-                        .frame(width: contentWidth, height: contentHeight)
-                        // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
-                        // tile-pixel space, so window points divide by `scale` before any
-                        // hit test. `.local` keeps this correct once the view scrolls.
-                        .onContinuousHover(coordinateSpace: .local) { phase in
-                            switch phase {
-                            case .active(let point):
-                                let p = farmPoint(point, scale: scale)
-                                let hit = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
-                                // Only assign on a real transition: moving the pointer
-                                // within one animal must not re-evaluate `body` at
-                                // mouse-move rate.
-                                if hit != hoveredPID { hoveredPID = hit }
-                                // Re-set on every event, not only on transitions:
-                                // AppKit's own cursor rects reassert themselves as the
-                                // pointer moves and would clobber a one-shot set.
-                                let onFence = FarmHitTest.penFenceIndex(
-                                    at: p, in: LastDrawnFrame.penTargets()) != nil
-                                FarmCursor.set(interactable: hit != nil || onFence)
-                            case .ended:
-                                if hoveredPID != nil { hoveredPID = nil }
-                                FarmCursor.reset()
-                            }
-                        }
-                        // `onTapGesture` only reports a location on macOS 14; a
-                        // zero-distance drag gives one on 13. `simultaneousGesture`, not
-                        // `gesture`: a zero-distance drag attached exclusively would
-                        // compete with the enclosing ScrollView for the event stream. The
-                        // translation guard below is what keeps an actual drag from
-                        // selecting anything.
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0).onEnded { value in
-                                guard abs(value.translation.width) < 3,
-                                      abs(value.translation.height) < 3 else { return }
-                                let p = farmPoint(value.location, scale: scale)
-                                // The fence wins over the animals. It is the pen's
-                                // outline, an animal can stand against the inside of it,
-                                // and someone aiming at a rail means the project.
-                                if let pen = FarmHitTest.penFenceIndex(at: p, in: LastDrawnFrame.penTargets()) {
-                                    modalCWD = scene.layout.pens[pen].pen.cwd
-                                    selectedPID = nil
-                                    return
-                                }
-                                selectedPID = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
-                            }
-                        )
+            HStack(spacing: 0) {
+                // A sibling of the panel rather than something the panel is laid over:
+                // the farm picks its tile scale from the width this `GeometryReader`
+                // reports, so the panel has to take that width away for real.
+                farmCanvas
+                panelTab
+                if panelOpen {
+                    FarmInfoPanel(pens: pens, usage: viewModel.usageResult) { cwd in
+                        modalCWD = cwd
+                        selectedPID = nil
                     }
-                }
-                // Bottom-trailing, not top: `FarmLayoutEngine` puts the barn and the first
-                // pen along row 0, so a card in the top-right corner would routinely cover
-                // the very animal you just clicked. The last pen row is the one that runs
-                // short, which makes the bottom-right the emptiest corner of the scene.
-                .overlay(alignment: .bottomTrailing) {
-                    if let process = selectedProcess {
-                        FarmDetailCard(process: process) { selectedPID = nil }
-                            .padding(12)
-                    }
+                    .transition(.move(edge: .trailing))
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // Spec's CC-BY obligation for the LPC animal art (see THIRD-PARTY-NOTICES.md):
             // attribution "in the app's Farm window credits."
@@ -663,7 +599,120 @@ struct FarmView: View {
         // Spec §2.4's own 1x minimum width: with the barn on its own row (Fix 2), the
         // worst realistic pen (8 of the largest species, penW=23) needs
         // 23 + marginL(4) + marginR(4) = 31 columns = 496px at 1x. Below this, a pen
-        // could clip past the right margin.
-        .frame(minWidth: 496, minHeight: 320)
+        // could clip past the right margin. The panel and its tab are added on top of
+        // that, so opening the panel widens the window rather than squeezing the farm
+        // under its own minimum.
+        .frame(minWidth: 496 + Self.tabWidth + (panelOpen ? FarmInfoPanel.width : 0),
+               minHeight: 320)
+    }
+
+    private var farmCanvas: some View {
+        GeometryReader { geo in
+            let (scale, rawLayout) = FarmScene.selectScaleAndLayout(pens: pens, width: geo.size.width, height: geo.size.height)
+            let scene = buildScene(pens: pens, layout: rawLayout)
+            let tile = CGFloat(16 * scale)
+            let contentWidth = max(geo.size.width, CGFloat(scene.contentCols) * tile)
+            let contentHeight = max(geo.size.height, CGFloat(scene.contentRows) * tile)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                // The fastest thing on screen is the 6fps walk cycle (bounce is
+                // 2Hz, the pulse 1.2Hz) — `.animation` alone redraws at 60-120Hz
+                // even when every animal is idle/frozen, which spec §5.1 says is
+                // the common case. Throttling to 12Hz loses nothing visible and
+                // cuts redraws 5-10x for a scene that's usually motionless.
+                TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { context in
+                    Canvas { ctx, size in
+                        draw(scene: scene, scale: scale,
+                             time: context.date.timeIntervalSinceReferenceDate,
+                             canvasSize: size,
+                             hoveredPID: hoveredPID, selectedPID: selectedPID,
+                             into: &ctx)
+                    }
+                    .frame(width: contentWidth, height: contentHeight)
+                    // Everything after `ctx.scaleBy` — every animal — is drawn in 1×
+                    // tile-pixel space, so window points divide by `scale` before any
+                    // hit test. `.local` keeps this correct once the view scrolls.
+                    .onContinuousHover(coordinateSpace: .local) { phase in
+                        switch phase {
+                        case .active(let point):
+                            let p = farmPoint(point, scale: scale)
+                            let hit = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
+                            // Only assign on a real transition: moving the pointer
+                            // within one animal must not re-evaluate `body` at
+                            // mouse-move rate.
+                            if hit != hoveredPID { hoveredPID = hit }
+                            // Re-set on every event, not only on transitions:
+                            // AppKit's own cursor rects reassert themselves as the
+                            // pointer moves and would clobber a one-shot set.
+                            let onFence = FarmHitTest.penFenceIndex(
+                                at: p, in: LastDrawnFrame.penTargets()) != nil
+                            FarmCursor.set(interactable: hit != nil || onFence)
+                        case .ended:
+                            if hoveredPID != nil { hoveredPID = nil }
+                            FarmCursor.reset()
+                        }
+                    }
+                    // `onTapGesture` only reports a location on macOS 14; a
+                    // zero-distance drag gives one on 13. `simultaneousGesture`, not
+                    // `gesture`: a zero-distance drag attached exclusively would
+                    // compete with the enclosing ScrollView for the event stream. The
+                    // translation guard below is what keeps an actual drag from
+                    // selecting anything.
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0).onEnded { value in
+                            guard abs(value.translation.width) < 3,
+                                  abs(value.translation.height) < 3 else { return }
+                            let p = farmPoint(value.location, scale: scale)
+                            // The fence wins over the animals. It is the pen's
+                            // outline, an animal can stand against the inside of it,
+                            // and someone aiming at a rail means the project.
+                            if let pen = FarmHitTest.penFenceIndex(at: p, in: LastDrawnFrame.penTargets()) {
+                                modalCWD = scene.layout.pens[pen].pen.cwd
+                                selectedPID = nil
+                                return
+                            }
+                            selectedPID = FarmHitTest.pid(at: p, in: LastDrawnFrame.targets())
+                        }
+                    )
+                }
+            }
+            // Bottom-trailing, not top: `FarmLayoutEngine` puts the barn and the first
+            // pen along row 0, so a card in the top-right corner would routinely cover
+            // the very animal you just clicked. The last pen row is the one that runs
+            // short, which makes the bottom-right the emptiest corner of the scene.
+            .overlay(alignment: .bottomTrailing) {
+                if let process = selectedProcess {
+                    FarmDetailCard(process: process) { selectedPID = nil }
+                        .padding(12)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private static let tabWidth: CGFloat = 14
+
+    /// The panel's handle: a strip down the farm's trailing edge. Full height rather than
+    /// a small corner button because the farm scrolls and a vertical scrollbar would land
+    /// on top of anything smaller, and because the panel is the only farm control that is
+    /// not diegetic — there is no barn or fence to hang it on.
+    private var panelTab: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { panelOpen.toggle() }
+        } label: {
+            Image(systemName: panelOpen ? "chevron.right" : "chevron.left")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(FarmPalette.ink)
+                .frame(width: Self.tabWidth)
+                .frame(maxHeight: .infinity)
+                .background(FarmPalette.woodHi)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            inside ? FarmCursor.set(interactable: true) : FarmCursor.reset()
+        }
+        .help(panelOpen ? "Hide farm information" : "Show farm information")
+        .accessibilityLabel(panelOpen ? "Hide farm information" : "Show farm information")
     }
 }
