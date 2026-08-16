@@ -110,110 +110,36 @@ enum FarmScenery {
             put(autumn ? 15 : 16, x, y + 1)
         }
 
-        // ---- canopy bands: the load-bearing rule from §6.2 ----------------------
-        // 0006 0007 0008 over 0018 0019 0020 tile horizontally into one continuous
-        // canopy (autumn: 0009 0010 0011 / 0021 0022 0023). Used as bands you get a
-        // forest; used as individual trees you get a field of lollipops.
-        @discardableResult
-        func canopyBand(_ x0In: Int, _ x1In: Int, _ y: Int, _ seed: Int, autumn: Bool) -> Bool {
+        // ---- tree stands: the load-bearing rule from §6.2 -----------------------
+        // Woodland is a dense stand of the 2-tall single tree, never the 0006-0008 /
+        // 0018-0020 "canopy band" an earlier draft of the spec called for: those are
+        // forest-*interior* pieces whose outlines are drawn to continue into their
+        // neighbours, so with open grass above them the top arcs dangle and the whole
+        // band reads as an upside-down cave ceiling. A single tree has an unambiguous
+        // silhouette — canopy on top, trunk at the bottom — and cannot read upside
+        // down at any density.
+        func stand(_ x0In: Int, _ x1In: Int, _ y0: Int, _ y1: Int, _ seed: Int,
+                   density: Double = 0.80, autumn: Double = 0.18, ramp: [Double] = [1]) {
             let x0 = max(0, x0In), x1 = min(layout.cols, x1In)
-            guard x1 - x0 >= 1, y >= 0, y + 2 <= layout.rows else { return false }
-            guard clear(x0, y, x1 - x0, 2) else { return false }
-            let top = autumn ? [9, 10, 11] : [6, 7, 8]
-            let bot = autumn ? [21, 22, 23] : [18, 19, 20]
-            for x in x0..<x1 {
-                let a = x == x0 ? top[0] : (x == x1 - 1 ? top[2] : top[1])
-                let b = x == x0 ? bot[0] : (x == x1 - 1 ? bot[2] : bot[1])
-                put(a, x, y)
-                put(b, x, y + 1)
-            }
-            mark(x0, y, x1 - x0, 2)
-            return true
-        }
-
-        // Ragged horizontal treeline. grow=+1 grows downward from edgeY, grow=-1
-        // grows upward (edgeY is the outermost row of the band).
-        func treelineH(_ x0: Int, _ x1: Int, _ edgeY: Int, _ grow: Int, _ seed: Int) {
-            var fringe: [(y: Int, x: Int, autumn: Bool)] = []
-            var x = x0
-            while x < x1 {
-                let h = StableHash.of(x, edgeY, seed)
-                let run = 3 + Int(h % 5)
-                let xe = min(x + run, x1)
-                let initialDepth = 1 + ((h >> 6) % 100 < 42 ? 1 : 0)
-                var depth = initialDepth
-                let inset = Int((h >> 10) % 2)
-                let autumn = (h >> 14) % 100 < 20
-                for b in 0..<initialDepth {
-                    let by = grow > 0 ? (edgeY + inset + b * 2) : (edgeY - inset - b * 2 - 1)
-                    if !canopyBand(x, xe, by, seed + b, autumn: autumn) {
-                        depth = b
-                        break
-                    }
+            let autumnPct = Int(autumn * 100)
+            var items: [(y: Int, x: Int, autumn: Bool)] = []
+            for (rowIndex, y) in (max(0, y0)..<min(layout.rows, y1)).enumerated() {
+                let pct = Int(density * ramp[min(rowIndex, ramp.count - 1)] * 100)
+                for x in x0..<x1 {
+                    let h = StableHash.of(x, y, seed)
+                    guard Int(h % 100) < pct else { continue }
+                    let yy = y + Int((h >> 7) % 2)
+                    guard clear(x, yy, 1, 2) else { continue }
+                    // Reserve the TRUNK cell only. Marking the whole 1×2 stops trees
+                    // from nesting into each other and collapses the mass straight back
+                    // into evenly-spaced lollipops — the original failure this replaces.
+                    mark(x, yy + 1)
+                    items.append((yy, x, Int((h >> 13) % 100) < autumnPct))
                 }
-                // Fringe of single trees/bushes just inside the mass.
-                for fx in x..<xe {
-                    let hf = StableHash.of(fx, edgeY, seed, 5)
-                    if hf % 100 < 30 {
-                        let fy = grow > 0 ? (edgeY + inset + depth * 2) : (edgeY - inset - depth * 2 - 1)
-                        if clear(fx, fy, 1, 2) {
-                            mark(fx, fy, 1, 2)
-                            fringe.append((fy, fx, (hf >> 8) % 100 < 20))
-                        }
-                    } else if hf % 100 < 44 {
-                        let fy = grow > 0 ? (edgeY + inset + depth * 2 + 1) : (edgeY - inset - depth * 2)
-                        if clear(fx, fy) {
-                            put((hf >> 12) % 2 == 1 ? 5 : 28, fx, fy)
-                            mark(fx, fy)
-                        }
-                    }
-                }
-                x = xe
             }
-            for f in fringe.sorted(by: { $0.y == $1.y ? $0.x < $1.x : $0.y < $1.y }) {
-                smallTree(f.x, f.y, f.autumn)
-            }
-        }
-
-        // Ragged vertical treeline. side=+1 hugs the left edge, -1 the right.
-        func treelineV(_ edgeX: Int, _ side: Int, _ y0: Int, _ y1: Int, _ seed: Int) {
-            var fringe: [(y: Int, x: Int, autumn: Bool)] = []
-            var y = y0
-            while y < y1 - 1 {
-                let h = StableHash.of(edgeX, y, seed)
-                let run = 2 + Int(h % 3) * 2
-                let w = 2 + Int((h >> 5) % 3)
-                let autumn = (h >> 9) % 100 < 18
-                var b = 0
-                while b < run {
-                    let bx0 = side > 0 ? edgeX : edgeX - w
-                    if !canopyBand(max(0, bx0), min(layout.cols, bx0 + w), y + b, seed + b, autumn: autumn) {
-                        var ww = w
-                        while ww > 1 {
-                            ww -= 1
-                            let bx0b = side > 0 ? edgeX : edgeX - ww
-                            if canopyBand(max(0, bx0b), min(layout.cols, bx0b + ww), y + b, seed + b, autumn: autumn) {
-                                break
-                            }
-                        }
-                    }
-                    b += 2
-                }
-                for fy in y..<min(y + run, y1) {
-                    let hf = StableHash.of(edgeX, fy, seed, 9)
-                    let fx = side > 0 ? (edgeX + w) : (edgeX - w - 1)
-                    if hf % 100 < 34 && clear(fx, fy, 1, 2) {
-                        mark(fx, fy, 1, 2)
-                        fringe.append((fy, fx, (hf >> 8) % 100 < 20))
-                    } else if hf % 100 < 52 && clear(fx, fy) {
-                        put((hf >> 12) % 2 == 1 ? 5 : 28, fx, fy)
-                        mark(fx, fy)
-                    }
-                }
-                y += run
-            }
-            for f in fringe.sorted(by: { $0.y == $1.y ? $0.x < $1.x : $0.y < $1.y }) {
-                smallTree(f.x, f.y, f.autumn)
+            // Back to front, so nearer canopies overlap and hide the trunks behind them.
+            for it in items.sorted(by: { $0.y == $1.y ? $0.x < $1.x : $0.y < $1.y }) {
+                smallTree(it.x, it.y, it.autumn)
             }
         }
 
@@ -263,13 +189,22 @@ enum FarmScenery {
         }
 
         // ---- woodland frame ------------------------------------------------------
-        treelineH(0, layout.cols, 0, +1, seed0 * 3 + 1)
-        treelineH(0, layout.cols, layout.rows - 2, -1, seed0 * 3 + 4)
-        treelineV(0, +1, 3, layout.rows - 5, seed0 * 3 + 2)
-        treelineV(layout.cols, -1, 3, layout.rows - 5, seed0 * 3 + 3)
+        // Dense at the outer edge and thinning inward. The ramp is what makes the
+        // treeline ragged; without it the stand is a solid ribbon with a straight
+        // inner edge, which is just the canopy band's problem in a different costume.
+        let ramp = [1.0, 0.85, 0.55, 0.30]
+        let marginT = FarmLayoutEngine.marginT, frameB = FarmLayoutEngine.frameB
+        stand(0, layout.cols, 0, marginT, seed0 * 3 + 1, ramp: ramp)
+        stand(0, layout.cols, layout.rows - frameB, layout.rows - 1, seed0 * 3 + 4,
+              ramp: ramp.reversed())
+        stand(0, FarmLayoutEngine.marginL - 1, marginT, layout.rows - frameB,
+              seed0 * 3 + 2, density: 0.72)
+        stand(layout.cols - FarmLayoutEngine.marginR + 1, layout.cols, marginT,
+              layout.rows - frameB, seed0 * 3 + 3, density: 0.72)
         // A copse behind the barn nests it into the landscape.
         if let bx = layout.barnX, let by = layout.barnY, by >= 4 {
-            canopyBand(bx - 1, bx + FarmLayoutEngine.barnW + 1, by - 2, seed0 * 3 + 5, autumn: false)
+            stand(bx - 1, bx + FarmLayoutEngine.barnW + 1, by - 2, by, seed0 * 3 + 5,
+                  density: 0.75)
         }
 
         // ---- leftover space in the last row: clustered, not a sprinkle (§6.3) ----

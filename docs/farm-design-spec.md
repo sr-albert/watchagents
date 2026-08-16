@@ -475,42 +475,60 @@ Farmyard cluster — **always clustered, never scattered singly**: `0093 0093 00
 barrel+bucket, `0130` chest, `0057` mailbox on the lane, `0083` signpost at the
 crossroads, `0103` character by the door for scale and life.
 
-### 6.2 Canopy bands — the rule that makes scenery deliberate
+### 6.2 Tree stands — the rule that makes scenery deliberate
 
-**Tiles `0006 0007 0008` over `0018 0019 0020` tile horizontally into a continuous
-canopy** (autumn variant: `0009 0010 0011` / `0021 0022 0023`). Used as *bands* you get
-a forest; used as individual trees you get a field of lollipops. This is the single
-difference between my pass 3 and pass 4.
+> **CORRECTION (2026-08-16).** An earlier version of this spec told you to tile
+> `0006 0007 0008` over `0018 0019 0020` as a "canopy band". **Do not build that.**
+> Those are forest-*interior* pieces: their dark outlines are drawn to continue into
+> neighbouring tiles. With open grass above them the top arcs dangle unattached and the
+> band reads as an upside-down cave ceiling with green stalactites. The user caught it
+> on sight. **Tiles `0006`–`0008`, `0018`–`0020`, `0009`–`0011` and `0021`–`0023` are
+> now unused anywhere in the design.**
+
+Woodland is built from **dense stands of the 2-tall single tree** — `0004` over `0016`
+(autumn: `0003` over `0015`) — at 1-tile spacing, drawn **back to front** so canopies
+overlap and hide the trunks behind them. A single tree has an unambiguous silhouette
+(canopy on top, trunk at the bottom) and cannot read upside down at any density.
 
 ```
-canopyBand(x0, x1, y, autumn):
-    guard all cells in (x0..<x1, y..<y+2) are unoccupied else return false
-    top: 0006 at x0, 0008 at x1-1, 0007 between   (autumn: 0009/0011/0010)
-    bot: 0018 at x0, 0020 at x1-1, 0019 between   (autumn: 0021/0023/0022)
-    mark occupied; return true
+stand(x0, x1, y0, y1, seed, density = 0.80, autumn = 0.18, ramp):
+    items = []
+    for rowIndex, y in enumerate(y0 ..< y1):
+        d = density * ramp[min(rowIndex, ramp.count-1)]
+        for x in x0 ..< x1:
+            h = hash(x, y, seed)
+            if h % 100 >= Int(d * 100) { continue }
+            yy = y + ((h >> 7) % 2)                  // 1-tile vertical jitter
+            if !clear(x, yy, w: 1, h: 2) { continue }
+            mark(x, yy + 1, w: 1, h: 1)              // reserve the TRUNK ONLY,
+                                                     // so canopies may nest
+            items.append((yy, x, (h >> 13) % 100 < Int(autumn * 100)))
+    for (y, x, isAutumn) in items.sorted(by: y) {    // BACK TO FRONT
+        draw 0003/0004 at (x, y);  draw 0015/0016 at (x, y+1)
+    }
 ```
 
-**Horizontal treeline** (top and bottom edges), walking in runs:
+**`mark` the trunk cell only, not the whole 1×2.** Reserving both rows prevents trees
+from nesting and collapses the mass back into evenly-spaced lollipops — which is the
+original mockup3 failure.
+
+**The density ramp is what makes the treeline ragged** — dense at the outer edge,
+thinning inward, instead of a solid ribbon:
 ```
-run    = 3 + hash(x, edgeY, seed) % 5        // 3..7 columns
-depth  = 1 + (hash>>6 % 100 < 42 ? 1 : 0)    // 1 or 2 bands
-inset  = hash>>10 % 2                        // 0 or 1 tiles
-autumn = hash>>14 % 100 < 20
-for b in 0..<depth: if !canopyBand(...) { depth = b; break }
+RAMP = (1.0, 0.85, 0.55, 0.30)      // indexed from the OUTER edge inward
+
+stand(0, COLS, 0, MARGIN_T,                       ramp: RAMP)              // top
+stand(0, COLS, ROWS-FRAME_B, ROWS-1,              ramp: RAMP.reversed())   // bottom
+stand(0, MARGIN_L-1, MARGIN_T, ROWS-FRAME_B,      density: 0.72)           // left
+stand(COLS-MARGIN_R+1, COLS, MARGIN_T, ROWS-FRAME_B, density: 0.72)        // right
+stand(BARN_X-1, BARN_X+BARN_W+1, BARN_Y-2, BARN_Y, density: 0.75)          // copse
 ```
 
-**Vertical treeline** (side columns):
-```
-run = 2 + (hash % 3) * 2      // 2, 4 or 6 rows
-w   = 2 + (hash>>5) % 3       // 2..4 tiles deep
-// on failure, retry with w-1 down to 1
-```
+Every placement tests the occupancy set first, which keeps trees off pens automatically
+and produces the ragged pen/woodland interface for free.
 
-**Fringe** — softens the straight interface, per column along the inner edge:
-`hash % 100 < 30` → a single tree (`0004`/`0016`, autumn `0003`/`0015`);
-`< 44` → a bush (`0005`/`0028`).
-
-A band behind the barn nests it into the landscape.
+**Fringe** — softens the inner edge further, per column: `hash % 100 < 30` → one extra
+tree; `< 44` → a bush (`0005`/`0028`).
 
 ### 6.3 Keeping the middle neither empty nor noisy
 
@@ -539,7 +557,8 @@ A band behind the barn nests it into the landscape.
 | Full-dirt pen interiors | Reads as an orange swatch — the same dashboard, recoloured |
 | Frozen = 40% alpha + overgrown pen | Looks broken; misrepresents a common benign state (§0a) |
 | Desaturation for frozen | Fails on white species — sheep, chicken, Holstein |
-| Scattering individual trees to fill space | Confetti. Canopy bands instead |
+| Scattering individual trees sparsely to fill space | Confetti. Dense stands with trunk-only reservation instead (§6.2) |
+| **Canopy bands from `0006-0008`/`0018-0020`** | **Reads upside down — dangling outline arcs with open grass above. Removed entirely (§6.2)** |
 | Tile `0043` as a crop bed | It's grey-flecked gravel; reads as rubble on grass |
 | State-sorted animal slots | Teleports animals across the pen on every state flip |
 | Uniform value-noise for grass | Produced visible diagonal streaks; §4.1 form doesn't |
