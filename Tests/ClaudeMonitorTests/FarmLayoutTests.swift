@@ -213,6 +213,28 @@ final class FarmLayoutTests: XCTestCase {
         XCTAssertEqual(layout.barnY, row0Bottom - FarmLayoutEngine.barnH)
     }
 
+    func test_aDormantSessionStillCountsTowardItsPensSize() {
+        // The one invariant the whole "layout does not move" design rests on:
+        // `FarmLayout.swift:146` sizes a pen from the *full* `processes.count`, dormant
+        // sessions included. Go through `layout()` itself, not `penSize` in isolation —
+        // a direct `penSize` call would never notice if that call site started filtering.
+        func process(_ pid: Int, _ state: SessionState) -> ClaudeProcess {
+            var p = ClaudeProcess(pid: pid, cpu: 0, mem: 0, cwd: "/a")
+            p.state = state
+            return p
+        }
+        let noneAsleep = FarmPen(cwd: "/a", label: "a", species: .cow,
+                                  processes: (0..<3).map { process(100 + $0, .idle) })
+        let oneAsleep = FarmPen(cwd: "/a", label: "a", species: .cow,
+                                 processes: [process(100, .dormant), process(101, .idle), process(102, .idle)])
+
+        let a = FarmLayoutEngine.layout(pens: [noneAsleep], cols: 60, rows: 40).pens[0]
+        let b = FarmLayoutEngine.layout(pens: [oneAsleep], cols: 60, rows: 40).pens[0]
+
+        XCTAssertEqual([a.w, a.h], [b.w, b.h],
+                       "a sleeper must still count toward its pen's size, or the pen reflows out from under its pen-mates")
+    }
+
     func test_pensNeverOverlapEachOther() {
         let pens = (0..<14).map { pen("/p\($0)", [.cow, .pig, .sheep, .chicken][$0 % 4], 1 + $0 % 3) }
         let layout = FarmLayoutEngine.layout(pens: pens, cols: 52, rows: 60)
