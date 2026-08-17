@@ -547,11 +547,15 @@ struct FarmView: View {
 
     /// Resolved live from the current snapshot rather than captured at hover or click
     /// time, so the card's numbers tick with the poll and the card dismisses itself when
-    /// the session exits.
+    /// the session exits — or when its animal leaves for the barn. Dormant sessions stay
+    /// in `viewModel.snapshot.processes` (accounting stays honest even for what the farm
+    /// stops drawing), so excluding them here is what actually closes the card: without
+    /// it, a pinned or hovered card outlives the gate walk and sits over empty pen dirt
+    /// for a session that, per spec, has no clickable animal left to belong to.
     private var cardProcess: ClaudeProcess? {
         guard let pid = FarmCardSelection.shownPID(hovered: hoveredPID, pinned: selectedPID)
         else { return nil }
-        return viewModel.snapshot.processes.first { $0.pid == pid }
+        return viewModel.snapshot.processes.first { $0.pid == pid && $0.state != .dormant }
     }
 
     /// Same rule as `selectedProcess`: live, so the modal's aggregates tick with the poll
