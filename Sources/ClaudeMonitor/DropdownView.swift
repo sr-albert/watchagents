@@ -8,6 +8,7 @@ enum SessionStateBadge {
         case .active: return "🏃"
         case .overloaded: return "🔥"
         case .frozen: return "🥶"
+        case .dormant: return "🥶"
         }
     }
 
@@ -17,6 +18,7 @@ enum SessionStateBadge {
         case .active: return "Active"
         case .overloaded: return "Overloaded"
         case .frozen: return "Frozen"
+        case .dormant: return "Frozen"
         }
     }
 }

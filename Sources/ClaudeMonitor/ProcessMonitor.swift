@@ -19,6 +19,9 @@ struct ClaudeProcess: Equatable {
     /// process has no tty, when `w` does not list it, or when its idle column could not
     /// be parsed — see `TerminalIdle`. Nil never satisfies the dormancy threshold.
     var ttyIdle: TimeInterval?
+    /// When this session fell asleep, from `SessionStateTracker` — the anchor the gate
+    /// walk is measured from, exactly as `idleSince` anchors the resting position.
+    var dormantSince: Date?
 }
 
 struct ProcessSnapshot: Equatable {

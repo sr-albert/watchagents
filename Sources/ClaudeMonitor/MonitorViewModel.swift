@@ -57,6 +57,7 @@ final class MonitorViewModel: ObservableObject {
                     var updated = process
                     updated.state = states[process.pid] ?? .idle
                     updated.idleSince = tracker.history(for: process.pid)?.idleSince
+                    updated.dormantSince = tracker.history(for: process.pid)?.dormantSince
                     return updated
                 }
                 let result = ProcessSnapshot(

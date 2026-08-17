@@ -71,6 +71,85 @@ final class SessionStateEvaluatorTests: XCTestCase {
         XCTAssertTrue(SessionStateEvaluator.isOverloaded(cpu: 5, mem: 30, basis: .both))
         XCTAssertFalse(SessionStateEvaluator.isOverloaded(cpu: 5, mem: 5, basis: .both))
     }
+
+    private func history(idle: Date?, dormant: Date? = nil) -> SessionStateEvaluator.History {
+        SessionStateEvaluator.History(idleSince: idle, overloadSince: nil, dormantSince: dormant)
+    }
+
+    func test_dormantWhenTerminalIdleLongerThanDormantDuration() {
+        let start = Date()
+        let now = start.addingTimeInterval(Thresholds.frozenDuration + 1)
+        let state = SessionStateEvaluator.evaluate(
+            cpu: 0, mem: 1, ttyIdle: Thresholds.dormantDuration + 1,
+            history: history(idle: start), now: now, basis: .both)
+        XCTAssertEqual(state, .dormant)
+    }
+
+    /// The half of the definition that makes the feature safe. A session Claude is
+    /// grinding through while you are at lunch has an idle terminal and a busy CPU, and
+    /// filing it into the barn would hide the most interesting thing on the farm.
+    func test_aWorkingSessionIsNeverDormantHoweverLongTheTerminalHasBeenIdle() {
+        let state = SessionStateEvaluator.evaluate(
+            cpu: 50, mem: 1, ttyIdle: 86400,
+            history: history(idle: nil), now: Date(), basis: .both)
+        XCTAssertEqual(state, .active)
+    }
+
+    func test_overloadedOutranksDormant() {
+        let start = Date()
+        let now = start.addingTimeInterval(Thresholds.overloadConfirmWindow + 1)
+        var h = history(idle: start)
+        h.overloadSince = start
+        let state = SessionStateEvaluator.evaluate(
+            cpu: 95, mem: 1, ttyIdle: 86400, history: h, now: now, basis: .both)
+        XCTAssertEqual(state, .overloaded)
+    }
+
+    func test_frozenButNotYetDormantBelowTheTerminalThreshold() {
+        let start = Date()
+        let now = start.addingTimeInterval(Thresholds.frozenDuration + 1)
+        let state = SessionStateEvaluator.evaluate(
+            cpu: 0, mem: 1, ttyIdle: Thresholds.dormantDuration - 1,
+            history: history(idle: start), now: now, basis: .both)
+        XCTAssertEqual(state, .frozen)
+    }
+
+    /// A process with no controlling terminal has no idle time to measure. It must fall
+    /// through to frozen rather than being treated as infinitely idle.
+    func test_aSessionWithNoTerminalIsNeverDormant() {
+        let start = Date()
+        let now = start.addingTimeInterval(Thresholds.frozenDuration + 1)
+        let state = SessionStateEvaluator.evaluate(
+            cpu: 0, mem: 1, ttyIdle: nil,
+            history: history(idle: start), now: now, basis: .both)
+        XCTAssertEqual(state, .frozen)
+    }
+
+    @MainActor
+    func test_trackerRecordsWhenASessionFirstFellAsleepAndForgetsOnWake() {
+        let tracker = SessionStateTracker()
+        let t0 = Date()
+        var asleep = ClaudeProcess(pid: 7, cpu: 0, mem: 1)
+        asleep.ttyIdle = Thresholds.dormantDuration + 1
+        let snap = ProcessSnapshot(processes: [asleep], cpuTotal: 0, memTotal: 1, sessionCount: 1)
+
+        _ = tracker.states(for: snap, now: t0, basis: .both)
+        let later = t0.addingTimeInterval(Thresholds.frozenDuration + 1)
+        _ = tracker.states(for: snap, now: later, basis: .both)
+        let since = tracker.history(for: 7)?.dormantSince
+        XCTAssertNotNil(since)
+
+        // Stamped once, on the first dormant evaluation — not advanced on every poll.
+        _ = tracker.states(for: snap, now: later.addingTimeInterval(60), basis: .both)
+        XCTAssertEqual(tracker.history(for: 7)?.dormantSince, since)
+
+        // You type; w's idle resets; the animal is awake and the stamp is gone.
+        var awake = asleep
+        awake.ttyIdle = 0
+        let awakeSnap = ProcessSnapshot(processes: [awake], cpuTotal: 0, memTotal: 1, sessionCount: 1)
+        _ = tracker.states(for: awakeSnap, now: later.addingTimeInterval(120), basis: .both)
+        XCTAssertNil(tracker.history(for: 7)?.dormantSince)
+    }
 }
 
 @MainActor

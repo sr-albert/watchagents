@@ -50,6 +50,7 @@ enum FarmCensus {
                 case .active: states.active += 1
                 case .overloaded: states.overloaded += 1
                 case .frozen: states.frozen += 1
+                case .dormant: states.frozen += 1
                 }
             }
         }
@@ -85,6 +86,7 @@ enum FarmCensus {
         switch state {
         case .overloaded: return 3
         case .frozen: return 2
+        case .dormant: return 2
         case .active: return 1
         case .idle: return 0
         }

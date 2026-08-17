@@ -221,6 +221,10 @@ enum FarmAnimalPlacer {
                 sheet = .eat; frame = 3
                 by -= off + 2
                 bx += restingDx
+            case .dormant:
+                sheet = .eat; frame = 3
+                by -= off + 2
+                bx += restingDx
             case .active:
                 // walk sheet, forward, overlaps the bottom rail, traversing its slot
                 // (spec §5.2). The static `bx += off` the other walking states use is
@@ -261,7 +265,7 @@ enum FarmAnimalPlacer {
         switch state {
         case .idle, .active:
             return AnimalTint(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-        case .frozen:
+        case .frozen, .dormant:
             // Spec §5.3: cool multiply, k = 0.45, alpha untouched, constant over
             // time (frozen must not animate at all). Desaturation was tried and
             // fails — sheep, chicken and the Holstein cow are near-white and have

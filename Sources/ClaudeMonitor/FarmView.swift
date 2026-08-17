@@ -139,7 +139,7 @@ private func tintCacheKey(spriteKey: String, state: SessionState, tint: AnimalTi
     switch state {
     case .idle, .active:
         return spriteKey
-    case .frozen:
+    case .frozen, .dormant:
         return spriteKey + "|frozen"
     case .overloaded:
         let bucket = Int((tint.redLift / 0.45 * 16).rounded())
