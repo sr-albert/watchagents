@@ -60,7 +60,9 @@ struct FarmInfoPanel: View {
     }
 
     /// Two columns rather than one line: at 240pt a single row of four counts wraps, and a
-    /// wrapped row reads as two unrelated ones.
+    /// wrapped row reads as two unrelated ones. The fifth tally sits alone on a third row,
+    /// held to the same column width as the four above it — stretched full-width it stops
+    /// reading as part of the same block.
     private var census: some View {
         let s = totals.states
         return VStack(alignment: .leading, spacing: 3) {
@@ -71,6 +73,11 @@ struct FarmInfoPanel: View {
             HStack(spacing: 0) {
                 tally(.overloaded, s.overloaded)
                 tally(.frozen, s.frozen)
+            }
+            HStack(spacing: 0) {
+                tally(.dormant, s.dormant)
+                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity)
             }
         }
     }

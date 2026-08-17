@@ -14,5 +14,10 @@ final class SkeletonTests: XCTestCase {
         XCTAssertEqual(SessionStateBadge.emoji(for: .active), "🏃")
         XCTAssertEqual(SessionStateBadge.emoji(for: .overloaded), "🔥")
         XCTAssertEqual(SessionStateBadge.emoji(for: .frozen), "🥶")
+        XCTAssertEqual(SessionStateBadge.emoji(for: .dormant), "😴")
+    }
+
+    func test_sessionStateBadge_mapsEachStateToADistinctLabel() {
+        XCTAssertEqual(SessionStateBadge.label(for: .dormant), "Sleeping")
     }
 }
