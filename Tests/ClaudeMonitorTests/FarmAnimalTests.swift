@@ -410,10 +410,15 @@ final class FarmAnimalDormantTests: XCTestCase {
     func test_theGateWalkActuallyMoves() {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let pen = penWithSleeper(dormantSince: t0)
-        var seen = Set<Int>()
+        // Sampling (bx, by) together, not bx alone: in this single-cow pen the gate sits
+        // almost exactly where the animal already rests, so the horizontal range is
+        // about a pixel — a check that would pass on a rounding coincidence rather than
+        // real movement. by carries the real margin here, and sampling the pair keeps
+        // this meaningful even if the horizontal geometry changes later.
+        var seen = Set<[Int]>()
         var t = 1000.0
         while t < 1000 + FarmAnimalPlacer.gateWalkDuration {
-            if let first = FarmAnimalPlacer.place(pen: pen, time: t).first { seen.insert(first.bx) }
+            if let first = FarmAnimalPlacer.place(pen: pen, time: t).first { seen.insert([first.bx, first.by]) }
             t += 0.17
         }
         XCTAssertGreaterThan(seen.count, 1, "the walk to the gate must not stand still")
