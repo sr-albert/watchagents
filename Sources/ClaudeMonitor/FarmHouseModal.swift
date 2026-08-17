@@ -132,6 +132,24 @@ struct FarmHouseModal: View {
                 }
             }
             .pickerStyle(.segmented)
+            HStack(spacing: 8) {
+                Text("Sleeps after")
+                    .font(.system(.callout, design: .rounded))
+                // Tagged with Int, not Double. A Picker whose selection and tags are
+                // floating-point matches them by exact bit equality, and a stored 4.0 that
+                // does not compare equal to a literal tag leaves the control blank with no
+                // error anywhere.
+                Picker("", selection: Binding(
+                    get: { Int(overloadSettings.dormantAfterHours.rounded()) },
+                    set: { overloadSettings.dormantAfterHours = Double($0) }
+                )) {
+                    ForEach([1, 2, 4, 8, 24], id: \.self) { hours in
+                        Text(hours == 24 ? "1 day" : "\(hours)h").tag(hours)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
             Toggle("Launch at login", isOn: Binding(
                 get: { loginItem.isEnabled },
                 set: { loginItem.setEnabled($0) }

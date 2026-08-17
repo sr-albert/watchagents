@@ -20,4 +20,18 @@ final class SkeletonTests: XCTestCase {
     func test_sessionStateBadge_mapsEachStateToADistinctLabel() {
         XCTAssertEqual(SessionStateBadge.label(for: .dormant), "Sleeping")
     }
+
+    @MainActor
+    func test_dormantThresholdPersistsAndDefaultsToFourHours() {
+        let suite = UserDefaults(suiteName: "dormant-threshold-test")!
+        suite.removePersistentDomain(forName: "dormant-threshold-test")
+
+        XCTAssertEqual(OverloadSettings(defaults: suite).dormantAfterHours, 4)
+
+        let settings = OverloadSettings(defaults: suite)
+        settings.dormantAfterHours = 8
+        XCTAssertEqual(OverloadSettings(defaults: suite).dormantAfterHours, 8)
+
+        suite.removePersistentDomain(forName: "dormant-threshold-test")
+    }
 }
