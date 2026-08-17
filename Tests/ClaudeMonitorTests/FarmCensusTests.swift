@@ -136,11 +136,15 @@ final class FarmCensusTests: XCTestCase {
         XCTAssertEqual(worst([.dormant]), .dormant)
     }
 
+    /// The cwds are deliberately picked so cwd order and label order disagree
+    /// ("/a/zed" sorts before "/z/apex", but "apex" sorts before "zed"). `FarmGrouping`
+    /// already hands `sleepers` its pens sorted by cwd, so if the two orders happened to
+    /// agree here, this would pass even with `sleepers`'s own sort deleted.
     func test_sleepersListsEveryDormantSessionAndNothingElse() {
         let rows = FarmCensus.sleepers(for: pens([
-            process(3, cwd: "/home/zed", state: .dormant),
-            process(1, cwd: "/home/apex", state: .dormant),
-            process(2, cwd: "/home/apex", state: .frozen),
+            process(3, cwd: "/a/zed", state: .dormant),
+            process(1, cwd: "/z/apex", state: .dormant),
+            process(2, cwd: "/z/apex", state: .frozen),
         ]))
 
         XCTAssertEqual(rows.map(\.pid), [1, 3])
