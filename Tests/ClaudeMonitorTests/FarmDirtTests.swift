@@ -16,7 +16,7 @@ final class FarmDirtTests: XCTestCase {
         let dirt = FarmDirt.dirtCells(layout: l)
         XCTAssertFalse(l.laneYs.isEmpty)
         for laneY in l.laneYs {
-            XCTAssertTrue(dirt.contains(TilePoint(x: FarmLayoutEngine.marginL + 2, y: laneY)),
+            XCTAssertTrue(dirt.contains(TilePoint(x: l.marginL + 2, y: laneY)),
                           "lane row \(laneY) should be dirt")
         }
     }
@@ -25,8 +25,8 @@ final class FarmDirtTests: XCTestCase {
         let l = layout(8)
         let dirt = FarmDirt.dirtCells(layout: l)
         for cell in dirt {
-            XCTAssertGreaterThanOrEqual(cell.x, FarmLayoutEngine.marginL)
-            XCTAssertLessThan(cell.x, l.cols - FarmLayoutEngine.marginR)
+            XCTAssertGreaterThanOrEqual(cell.x, l.marginL)
+            XCTAssertLessThan(cell.x, l.cols - l.marginR)
         }
     }
 

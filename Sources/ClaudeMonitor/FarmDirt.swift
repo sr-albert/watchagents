@@ -15,7 +15,7 @@ struct TilePoint: Hashable {
 enum FarmDirt {
     static func dirtCells(layout: FarmLayout) -> Set<TilePoint> {
         var dirt = Set<TilePoint>()
-        let avail = layout.cols - FarmLayoutEngine.marginL - FarmLayoutEngine.marginR
+        let avail = layout.cols - layout.marginL - layout.marginR
 
         func addRect(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
             guard w > 0, h > 0 else { return }
@@ -31,7 +31,7 @@ enum FarmDirt {
         // 1. Lanes — a 2-tile dirt road between every pair of rows. Terminates inside
         // the margins; it does not bleed off the edges.
         for laneY in layout.laneYs {
-            addRect(FarmLayoutEngine.marginL + 1, laneY, avail - 2, FarmLayoutEngine.laneH)
+            addRect(layout.marginL + 1, laneY, avail - 2, FarmLayoutEngine.laneH)
         }
 
         // 2. Barn spur + apron.

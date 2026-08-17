@@ -129,8 +129,8 @@ enum FarmScenery {
             mark(bx - 1, by - 1, FarmLayoutEngine.barnW + 2, FarmLayoutEngine.barnH + 2)
         }
         for ly in layout.laneYs {
-            mark(FarmLayoutEngine.marginL - 1, ly - 1,
-                 layout.cols - FarmLayoutEngine.marginL - FarmLayoutEngine.marginR + 2,
+            mark(layout.marginL - 1, ly - 1,
+                 layout.cols - layout.marginL - layout.marginR + 2,
                  FarmLayoutEngine.laneH + 2)
         }
 

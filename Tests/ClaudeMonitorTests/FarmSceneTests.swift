@@ -18,14 +18,42 @@ final class FarmSceneSelectScaleAndLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(layout.requiredRows, Int(1000) / (16 * scale))
     }
 
+    /// The scenery margins are slack, not structure: a scale must only be rejected when
+    /// the *pens* don't fit (spec §2.4, "clip scenery first, then scroll"). This is the
+    /// real census that exposed the missing rung — five pens on a 1512×893 window. Packed
+    /// against the old fixed margins it needed 28 rows at 2x and had 27, missed by one,
+    /// and fell all the way to 1x: half the tile size, and the farm using 13 of 55 rows.
+    /// Against minimum margins the same pens need 16 rows, so 2x is the honest answer.
+    func test_scenerySlackIsGivenUpBeforeAScaleIs() {
+        let pens = makePens([(.chicken, 1), (.chicken, 2), (.cow, 2), (.cow, 2), (.sheep, 2)])
+        let (scale, layout) = FarmScene.selectScaleAndLayout(pens: pens, width: 1512, height: 893)
+        XCTAssertEqual(scale, 2)
+        XCTAssertLessThanOrEqual(layout.requiredRows, Int(893) / (16 * scale))
+    }
+
+    /// A scrolling farm is the one shape with no vertical slack for centring to hand back,
+    /// so it is the only place the minimum band is what you actually see. Rendered at 30
+    /// pens with a single shared minimum, the first row's top rail and the last row's
+    /// bottom rail both sat ~10px from the window edge and the field read as cut off.
+    func test_aScrollingFarmKeepsGroundPastItsOutermostFences() {
+        let pens = makePens((0..<30).map { i in ([.cow, .pig, .sheep, .chicken][i % 4], 1 + i % 3) })
+        let (scale, layout) = FarmScene.selectScaleAndLayout(pens: pens, width: 1104, height: 720)
+        XCTAssertGreaterThan(layout.requiredRows, Int(720) / (16 * scale),
+                             "expected a farm too tall for its window")
+        let rows = max(layout.rows, layout.requiredRows)
+        let below = rows - layout.pens.map { $0.y + $0.h }.max()!
+        XCTAssertGreaterThanOrEqual(below, FarmLayoutEngine.minVerticalMargin)
+        XCTAssertGreaterThanOrEqual(layout.marginT, FarmLayoutEngine.minVerticalMargin)
+    }
+
     func test_dropsToSmallerScaleWhenTheLayoutIsWide() {
-        // Hand-verified: eight 13-wide cow pens give minCols = 13 + barnW(7) + gap(2) + 1 +
-        // marginL(4) + marginR(4) = 31. At scale 3 winCols = 1000/48 = 20 < 31 (rejected on
-        // columns alone). At scale 2 winCols = 1000/32 = 31 (columns clear), but the
-        // available row width only fits one 13-wide pen per row after the barn's slot, so
-        // all 8 pens stack into 8 rows and requiredRows balloons to 77, far past
-        // winRows = 700/32 = 21. At scale 1 (winCols=62, winRows=43) the wider row budget
-        // packs pens 3/3/2 across 3 rows, requiredRows = 32, which fits.
+        // Measured: eight 13-wide cow pens give minCols = 13 + barnW(7) + gap(2) + 1 +
+        // 2*minMargin(1) = 25. At scale 3 winCols = 1000/48 = 20 < 25 (rejected on columns
+        // alone). At scale 2 winCols = 1000/32 = 31 (columns clear), but the available row
+        // width only fits one 13-wide pen beside the barn and two per row after it, so the
+        // 8 pens stack into 5 rows and requiredRows reaches 45, past winRows = 700/32 = 21.
+        // At scale 1 (winCols=62, winRows=43) the wider row budget packs pens 3/4/1 across
+        // 3 rows, requiredRows = 27, which fits.
         let pens = makePens((0..<8).map { _ in (AnimalSpecies.cow, 4) })
         let (scale, layout) = FarmScene.selectScaleAndLayout(pens: pens, width: 1000, height: 700)
         XCTAssertEqual(scale, 1)
@@ -46,11 +74,11 @@ final class FarmSceneSelectScaleAndLayoutTests: XCTestCase {
     /// buggy re-derivation reintroduced, these inputs at 1400×1300 produce scale 1
     /// (falling through to the "nothing fit" scroll fallback even though scale 2 fits);
     /// with the direct-check fix in this file, they correctly produce scale 2. Six
-    /// 9-wide/5-tall chicken pens give minCols = 9 + barnW(7) + gap(2) + 1 + marginL(4) +
-    /// marginR(4) = 27. At scale 3, winCols = 1400/48 = 29 (columns clear) but this
-    /// candidate's own layout needs 33 rows against winRows = 1300/48 = 27 — scale 3
+    /// 9-wide/5-tall chicken pens give minCols = 9 + barnW(7) + gap(2) + 1 +
+    /// 2*minMargin(1) = 21. At scale 3, winCols = 1400/48 = 29 (columns clear) but this
+    /// candidate's own layout needs 29 rows against winRows = 1300/48 = 27 — scale 3
     /// correctly fails on rows. At scale 2, winCols = 1400/32 = 43 and this candidate's
-    /// own layout needs only 26 rows against winRows = 1300/32 = 40 — scale 2 genuinely
+    /// own layout needs only 14 rows against winRows = 1300/32 = 40 — scale 2 genuinely
     /// fits, and is the correct answer.
     func test_circularDependency_choosesLargestScaleThatGenuinelyFitsWithoutFallingBackToScroll() {
         let pens = makePens((0..<6).map { _ in (AnimalSpecies.chicken, 2) })
@@ -104,7 +132,7 @@ final class FarmSceneSelectScaleAndLayoutTests: XCTestCase {
                 let (_, layout) = FarmScene.selectScaleAndLayout(pens: pens, width: CGFloat(width), height: 900)
                 for placed in layout.pens {
                     XCTAssertLessThanOrEqual(
-                        placed.x + placed.w, layout.cols - FarmLayoutEngine.marginR,
+                        placed.x + placed.w, layout.cols - layout.marginR,
                         "count=\(count) width=\(width): pen right edge \(placed.x + placed.w) " +
                         "exceeds margin at cols=\(layout.cols)")
                 }
@@ -114,8 +142,8 @@ final class FarmSceneSelectScaleAndLayoutTests: XCTestCase {
 
     func test_emptyPens() {
         let (scale, layout) = FarmScene.selectScaleAndLayout(pens: [], width: 1200, height: 800)
-        // maxPenW=0, minCols = 0+barnW(7)+gap(2)+1+marginL(4)+marginR(4) = 18; requiredRows
-        // is the empty farm's own minimum (marginT+barnH+frameB = 11), not 0 (Fix 6).
+        // maxPenW=0, minCols = 0+barnW(7)+gap(2)+1+2*minMargin(1) = 12; requiredRows is the
+        // empty farm's own minimum (barnH + 2*minVerticalMargin = 8), not 0 (Fix 6).
         // scale 3 gives winCols=25, winRows=16, both comfortably clear the empty-pens minimums.
         XCTAssertEqual(scale, 3)
         XCTAssertTrue(layout.pens.isEmpty)

@@ -22,7 +22,7 @@ enum FarmScene {
             let layout = FarmLayoutEngine.layout(pens: pens, cols: winCols, rows: winRows)
             let maxPenW = layout.pens.map(\.w).max() ?? 0
             let minCols = maxPenW + FarmLayoutEngine.barnW + FarmLayoutEngine.gap + 1
-                + FarmLayoutEngine.marginL + FarmLayoutEngine.marginR
+                + 2 * FarmLayoutEngine.minMargin
             // Test this candidate directly (`winCols`/`winRows` against `minCols`/this
             // layout's own `requiredRows`) rather than by re-invoking this same function
             // recursively: `requiredRows` shrinks as `winCols` grows (fewer columns wrap

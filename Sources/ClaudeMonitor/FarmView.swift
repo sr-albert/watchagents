@@ -181,9 +181,10 @@ func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
         // bound, at whatever scale is short enough to hit it.
         normalized = FarmLayout(
             pens: [], laneYs: [],
-            barnX: FarmLayoutEngine.marginL, barnY: FarmLayoutEngine.marginT,
+            barnX: layout.marginL, barnY: layout.marginT,
             cols: layout.cols, rows: max(layout.rows, layout.requiredRows),
-            requiredRows: layout.requiredRows
+            requiredRows: layout.requiredRows,
+            marginL: layout.marginL, marginR: layout.marginR, marginT: layout.marginT
         )
     } else {
         normalized = layout
@@ -616,12 +617,13 @@ struct FarmView: View {
                 .transition(.opacity)
             }
         }
-        // Spec §2.4's own 1x minimum width: with the barn on its own row (Fix 2), the
-        // worst realistic pen (8 of the largest species, penW=23) needs
-        // 23 + marginL(4) + marginR(4) = 31 columns = 496px at 1x. Below this, a pen
-        // could clip past the right margin. The panel and its tab are added on top of
-        // that, so opening the panel widens the window rather than squeezing the farm
-        // under its own minimum.
+        // Spec §2.4's 1x minimum width, kept at the value the fixed 4-tile margins gave:
+        // with the barn on its own row (Fix 2), the worst realistic pen (8 of the largest
+        // species, penW=23) needs 23 + 2*minMargin(1) = 25 columns = 400px at 1x, so 496
+        // is now a floor with slack rather than the exact minimum. Left as it is on
+        // purpose — a window narrow enough to matter has no room for the farm anyway. The
+        // panel and its tab are added on top, so opening the panel widens the window
+        // rather than squeezing the farm under its own minimum.
         .frame(minWidth: 496 + Self.tabWidth + (panelOpen ? FarmInfoPanel.width : 0),
                minHeight: 320)
     }

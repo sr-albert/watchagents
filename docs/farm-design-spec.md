@@ -57,10 +57,9 @@ covers the code while assets keep their own licenses. Kenney is CC0, no obligati
 
 ```
 T            = 16            // tile px
-MARGIN_L     = 4             // tiles; woodland, not padding
-MARGIN_R     = 4
-MARGIN_T     = 3
-FRAME_B      = 4
+MIN_MARGIN   = 1             // tiles; the side band pens are ALWAYS packed against
+MIN_V_MARGIN = 2             // ditto above/below — see §2.6 for why it is not 1
+SLACK_SPLIT  = 3:4           // top:bottom share of the leftover (see §2.6)
 GAP          = 2             // tiles between pens in a row
 LANE_H       = 2             // dirt lane height
 BARN_W, BARN_H = 7, 4
@@ -111,7 +110,7 @@ Worked examples: 1 cow → 8×6. 2 cows → 13×6. 1 pig → 7×5. 4 chickens �
 Walk pens in the existing deterministic order (path, then pid). Never sort by state.
 
 ```
-avail = COLS - MARGIN_L - MARGIN_R
+avail = COLS - 2*MIN_MARGIN
 curW  = BARN_W + GAP + 1            // row 0 starts with the barn's slot consumed
 for pen in pens:
     if curW + pen.w > avail && (row.notEmpty || curW > 0):
@@ -125,10 +124,10 @@ and the pen lands past the barn regardless of window width, off the right edge.
 
 Vertical placement:
 ```
-y = MARGIN_T
+y = MIN_V_MARGIN
 for each row:
     rowH = max(pen.h for pen in row)
-    x = MARGIN_L + (rowIndex == 0 ? BARN_W + GAP + 1 : 0)
+    x = MIN_MARGIN + (rowIndex == 0 ? BARN_W + GAP + 1 : 0)
     for pen in row:
         pen.origin = (x, y + (rowH - pen.h))     // BOTTOM-ALIGNED
         x += pen.w + GAP
@@ -138,7 +137,7 @@ for each row:
 **Bottom-align pens within the row.** Different pen heights then produce a ragged top
 edge. This single line does more to kill the "dashboard" read than anything else.
 
-`BARN_X = MARGIN_L`, `BARN_Y = row0.y + row0.h - BARN_H`.
+`BARN_X = MIN_MARGIN`, `BARN_Y = row0.y + row0.h - BARN_H` — both before centring (§2.6).
 
 ### 2.3 Lanes and gates
 
@@ -155,14 +154,24 @@ the edges.
 
 ### 2.4 Fit rule
 ```
-minCols = maxPenW + BARN_W + GAP + 1 + MARGIN_L + MARGIN_R
-minRows = Σ rowH + 2*laneCount + MARGIN_T + FRAME_B
+minCols = maxPenW + BARN_W + GAP + 1 + 2*MIN_MARGIN
+minRows = Σ rowH + 2*laneCount + 2*MIN_V_MARGIN
 ```
-A 2-cow pen (`penW=13`) ⇒ `minCols = 31` ⇒ **1488px minimum width at 3×, 992 at 2×,
-496 at 1×**. If 1× still fails on width, move the barn to its own row (recovers 10
+
+**Both are measured against `MIN_MARGIN`, never against a roomier band.** The margins are
+slack (§2.6), so a scale may only ever be rejected because the *pens* don't fit. Testing
+the fit against a fixed 4/3/4 margin instead is what "clip scenery first, then scroll"
+below is meant to prevent, and skipping that rung is a real bug we shipped: a five-pen
+farm needed 28 rows at 2× in a window of 27 — **one row** — and so rendered at 1×, half
+the tile size, with the farm using a quarter of its window. Seven of those 28 rows were
+scenery band. Note the cliff, not just the case: a 57px change in window height flipped
+the whole scene between 1× and 2×.
+A 2-cow pen (`penW=13`) ⇒ `minCols = 25` ⇒ **1200px minimum width at 3×, 800 at 2×,
+400 at 1×**. If 1× still fails on width, move the barn to its own row (recovers 10
 columns). If it fails on height, **scroll vertically**.
 
-**Never clip a pen.** Clip scenery first (margins → 1, woodland disappears), then scroll.
+**Never clip a pen.** The ladder is: give up scenery band (that is what §2.6 packing
+against the minimum *is*), then a scale, then scroll.
 
 ### 2.5 Measured capacity
 
@@ -178,6 +187,45 @@ columns). If it fails on height, **scroll vertically**.
 
 Rule of thumb: 2× comfortably holds ~8–9 pens in a 1472×960 window. Scale is the
 primary lever; scrolling is the last resort.
+
+### 2.6 Elastic margins — the packing is centred, not the margins padded
+
+Everything above packs into the top-left against `MIN_MARGIN`. Then measure what it came
+to and slide the whole thing into the middle:
+
+```
+contentW = max(pen.x + pen.w for pen) ∪ (BARN_X + BARN_W)  −  MIN_MARGIN
+contentH = lastRow.y + lastRow.h  −  MIN_V_MARGIN
+slack    = ROWS - contentH
+
+MARGIN_L = max(MIN_MARGIN, (COLS - contentW) / 2)
+MARGIN_R = max(MIN_MARGIN, COLS - contentW - MARGIN_L)
+MARGIN_T = max(MIN_V_MARGIN, min(slack * 3/7, slack - MIN_V_MARGIN))   // SLACK_SPLIT
+
+dx = MARGIN_L - MIN_MARGIN ;  dy = MARGIN_T - MIN_V_MARGIN  // translate pens, lanes, barn
+```
+
+**Slide a finished packing; never pack against the grown margins.** Growing them first
+shrinks `avail`, re-wraps pens into more rows, and breaks the fit the caller just proved
+at this scale.
+
+The 3:4 vertical share is the proportion the old fixed `MARGIN_T`/`FRAME_B` had, and the
+inner `min` stops it spending ground the bottom band still needs.
+
+**`MIN_V_MARGIN` is 2 where `MIN_MARGIN` is 1, and the two must not be merged.** At one
+tile a 30-pen farm put the first row's top rail and the last row's bottom rail ~10px from
+the window edge, and the field read as cut off instead of continuing past it. The sides
+don't shear the same way: a row that fills its width ends in pens of differing widths, so
+that edge is ragged already. Raising *both* to 2 fixes the top and bottom and then takes
+two columns off every row's packing budget — `MIN_MARGIN` is what `avail` is measured
+against — which wraps pens into more rows and pushes layouts back down a scale: a farm of
+eight 4-cow pens went from 47 rows to 74 at 2×. That is the harm this whole rung exists
+to undo, so the sides stay at 1.
+
+`MARGIN_L`/`MARGIN_R`/`MARGIN_T` are **outputs of the layout**, so anything positioned
+against the field's edge — lane extent (§4.2), hedge shoulders (§6.3), the empty farm's
+barn — reads them from the layout. Nothing may assume a fixed inset. An empty farm has
+`contentW = BARN_W`, which stands its lone barn in the middle of the field.
 
 ---
 
@@ -537,6 +585,11 @@ stand(0, MARGIN_L-1, MARGIN_T, ROWS-FRAME_B,      density: 0.72)           // le
 stand(COLS-MARGIN_R+1, COLS, MARGIN_T, ROWS-FRAME_B, density: 0.72)        // right
 stand(BARN_X-1, BARN_X+BARN_W+1, BARN_Y-2, BARN_Y, density: 0.75)          // copse
 ```
+
+> Written when the margins were fixed at 4/3/4. They are now the layout's leftover
+> (§2.6), so read them from the layout and take `FRAME_B` as `ROWS - MARGIN_T - contentH`.
+> A band that used to be 3–4 tiles can now be a dozen, which is worth looking at before
+> restoring any of this.
 
 Every placement tests the occupancy set first, which keeps trees off pens automatically
 and produces the ragged pen/woodland interface for free.

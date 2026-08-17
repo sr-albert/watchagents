@@ -51,14 +51,74 @@ final class FarmPenSizeTests: XCTestCase {
     }
 }
 
+/// The right edge of everything built: pens and the barn. What the layout centres.
+private func contentRight(_ layout: FarmLayout) -> Int {
+    let penRight = layout.pens.map { $0.x + $0.w }.max() ?? 0
+    let barnRight = (layout.barnX ?? 0) + FarmLayoutEngine.barnW
+    return max(penRight, barnRight)
+}
+
+/// The margins are the layout's slack, not fixed structure. Pens are packed against the
+/// minimum margin so a scale is never rejected over scenery (spec §2.4), and whatever is
+/// left over is then handed back to the margins — which is what stops a farm that
+/// happens to be small for its window from sitting in the top-left corner.
+final class FarmLayoutElasticMarginTests: XCTestCase {
+    func test_leftoverWidthIsSplitEvenlyBetweenTheSideMargins() {
+        let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 60, rows: 40)
+        let contentW = contentRight(layout) - layout.marginL
+        XCTAssertEqual(layout.marginL + contentW + layout.marginR, 60,
+                       "the margins and the content must account for every column")
+        XCTAssertLessThanOrEqual(abs(layout.marginL - layout.marginR), 1,
+                                 "left \(layout.marginL) vs right \(layout.marginR) — not centred")
+        XCTAssertGreaterThan(layout.marginL, FarmLayoutEngine.minMargin,
+                             "a 23-wide farm in a 60-column window has slack to spend")
+    }
+
+    func test_leftoverHeightIsSplitThreeToFourTopToBottom() {
+        // The spec's own marginT:frameB proportion, which leaves slightly more open
+        // ground below the farm than above it.
+        let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 60, rows: 40)
+        let contentH = layout.pens.map { $0.y + $0.h }.max()! - layout.marginT
+        let leftover = 40 - contentH
+        XCTAssertEqual(layout.marginT, leftover * 3 / 7)
+        XCTAssertGreaterThan(40 - layout.marginT - contentH, layout.marginT,
+                             "more ground below the farm than above it")
+    }
+
+    func test_pensAndBarnMoveWithTheMargins() {
+        let a = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 60, rows: 40)
+        let b = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 90, rows: 40)
+        XCTAssertEqual(b.marginL - a.marginL, b.pens[0].x - a.pens[0].x,
+                       "a pen sits at a fixed offset from the left margin, whatever it is")
+        XCTAssertEqual(b.barnX! - a.barnX!, b.marginL - a.marginL)
+        XCTAssertEqual(a.pens[0].w, b.pens[0].w, "centring must not resize a pen")
+    }
+
+    func test_aLayoutThatMustScrollKeepsTheMinimumMargins() {
+        // No slack to give back: everything goes to the pens.
+        let pens = (0..<30).map { pen("/p\($0)", .cow, 1) }
+        let layout = FarmLayoutEngine.layout(pens: pens, cols: 46, rows: 20)
+        XCTAssertGreaterThan(layout.requiredRows, 20)
+        XCTAssertEqual(layout.marginT, FarmLayoutEngine.minVerticalMargin)
+    }
+
+    func test_anEmptyFarmCentresItsBarn() {
+        // The empty state is still a farm, and a farm of one barn should stand in the
+        // middle of its field rather than in the corner.
+        let layout = FarmLayoutEngine.layout(pens: [], cols: 46, rows: 28)
+        XCTAssertEqual(layout.marginL + FarmLayoutEngine.barnW + layout.marginR, 46)
+        XCTAssertLessThanOrEqual(abs(layout.marginL - layout.marginR), 1)
+    }
+}
+
 final class FarmLayoutTests: XCTestCase {
     func test_firstPenSitsBesideTheBarnWhenTheWindowIsWideEnough() {
-        // cols must clear the §2.4 fit rule: 13 + barnW(7) + gap(2) + 1 + margins(8) = 31.
+        // cols must clear the §2.4 fit rule: 13 + barnW(7) + gap(2) + 1 + 2*minMargin(1) = 25.
         let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 2)], cols: 40, rows: 40)
         let placed = layout.pens[0]
-        XCTAssertEqual(placed.x, FarmLayoutEngine.marginL + FarmLayoutEngine.barnW + FarmLayoutEngine.gap + 1,
+        XCTAssertEqual(placed.x, layout.marginL + FarmLayoutEngine.barnW + FarmLayoutEngine.gap + 1,
                        "row 0 must reserve the barn's slot")
-        XCTAssertLessThanOrEqual(placed.x + placed.w, 40 - FarmLayoutEngine.marginR)
+        XCTAssertLessThanOrEqual(placed.x + placed.w, 40 - layout.marginR)
     }
 
     func test_narrowWindowDegradesWithoutCorruptingTheLayout() {
@@ -124,8 +184,8 @@ final class FarmLayoutTests: XCTestCase {
         let pens = (0..<14).map { pen("/p\($0)", [.cow, .pig, .sheep, .chicken][$0 % 4], 1 + $0 % 3) }
         let layout = FarmLayoutEngine.layout(pens: pens, cols: 52, rows: 60)
         for placed in layout.pens {
-            XCTAssertGreaterThanOrEqual(placed.x, 4)
-            XCTAssertLessThanOrEqual(placed.x + placed.w, 52 - 4)
+            XCTAssertGreaterThanOrEqual(placed.x, layout.marginL)
+            XCTAssertLessThanOrEqual(placed.x + placed.w, 52 - layout.marginR)
         }
     }
 
@@ -148,7 +208,7 @@ final class FarmLayoutTests: XCTestCase {
 
     func test_barnXAndBarnYOnNormalLayout() {
         let layout = FarmLayoutEngine.layout(pens: [pen("/a", .cow, 1)], cols: 40, rows: 40)
-        XCTAssertEqual(layout.barnX, FarmLayoutEngine.marginL)
+        XCTAssertEqual(layout.barnX, layout.marginL)
         let row0Bottom = layout.pens.map { $0.y + $0.h }.max()!
         XCTAssertEqual(layout.barnY, row0Bottom - FarmLayoutEngine.barnH)
     }
