@@ -14,7 +14,8 @@ enum TerminalIdle {
     static func parseIdleField(_ field: String) -> TimeInterval? {
         if field == "-" { return 0 }
 
-        // Checked longest-first: "days" must not be matched by the "day" branch.
+        // "days" and "day" are disjoint suffixes (anything ending in "days" ends in
+        // "ays", not "day"), so the order they're checked in doesn't matter today.
         for suffix in ["days", "day"] where field.hasSuffix(suffix) {
             guard let days = Double(field.dropLast(suffix.count)) else { return nil }
             return days * 86400

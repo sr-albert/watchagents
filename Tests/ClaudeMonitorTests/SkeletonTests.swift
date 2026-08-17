@@ -18,6 +18,10 @@ final class SkeletonTests: XCTestCase {
     }
 
     func test_sessionStateBadge_mapsEachStateToADistinctLabel() {
+        XCTAssertEqual(SessionStateBadge.label(for: .idle), "Idle")
+        XCTAssertEqual(SessionStateBadge.label(for: .active), "Active")
+        XCTAssertEqual(SessionStateBadge.label(for: .overloaded), "Overloaded")
+        XCTAssertEqual(SessionStateBadge.label(for: .frozen), "Frozen")
         XCTAssertEqual(SessionStateBadge.label(for: .dormant), "Sleeping")
     }
 

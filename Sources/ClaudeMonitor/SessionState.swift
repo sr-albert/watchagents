@@ -17,6 +17,11 @@ enum Thresholds {
     /// Terminal idle before `frozen` escalates to `dormant`. Four hours: long enough that
     /// lunch or a long meeting does not put a live session to bed, short enough that
     /// yesterday's leftovers are asleep by the time you sit down.
+    ///
+    /// `FarmHouseModal`'s picker separately hardcodes the hour values it offers
+    /// (`[1, 2, 4, 8, 24]`) instead of deriving them from this constant, so changing this
+    /// default to a value outside that set renders the picker blank for every user by
+    /// default until they touch it.
     static let dormantDuration: TimeInterval = 14400
 }
 

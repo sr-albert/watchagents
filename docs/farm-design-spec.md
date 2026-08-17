@@ -408,9 +408,11 @@ Ranked by **how much the user must act** — that's what salience should track:
 | 5 | `frozen` | **common** | nothing — you just haven't typed in 10 min |
 | 6 | `dormant` | **common** | nothing — it is asleep in the barn, and out of the scene |
 
-`dormant` is the only cue here that *reduces* what is on screen. It adds no colour, no
-motion and no badge — it takes an animal out of the pens entirely. That is why it can be
-common without violating the budget above.
+`dormant` is the only cue here that *reduces* what is on screen. At rest it adds no
+colour, no motion and no badge — it takes an animal out of the pens entirely. That is why
+it can be common without violating the budget above. (The transition into that state is
+its own brief cue, covered in §5.2's table — this paragraph is about the resting barn
+state, not the walk that gets it there.)
 
 The scene must stay pleasant when nothing is happening — that's the product's premise.
 Delight comes from **ambient life with no state meaning** (staggered grazing, the
@@ -454,6 +456,9 @@ shade only has to say "resting", which this value already says across all four s
 Escalation: `idle` → `frozen` (10 min of idle CPU) → `dormant` (4h of terminal idle, *and*
 still frozen). The second condition is load-bearing: without it a session running a long
 autonomous task while you are away would be filed into the barn.
+
+4h is the default, not a fixed constant: it is `OverloadSettings.dormantAfterHours`,
+user-adjustable from the barn.
 
 **Overloaded — red pulse, `amt` oscillating `0 → 0.45` at 1.2 Hz:**
 ```

@@ -41,8 +41,9 @@ enum FarmAnimalPlacer {
 
     /// How long a session takes to walk out of its pen after falling asleep. Short,
     /// because it is the only moment this transition is ever visible: at a four-hour
-    /// threshold it plays about once per session per day, and never at all for a session
-    /// that was already asleep when the app launched.
+    /// threshold it plays about once per session per day. Sessions that were already
+    /// asleep when the app launched are not exempt from this — see the note at the
+    /// `dormantSince` guard in `place()` below.
     static let gateWalkDuration: Double = 3.0
 
     /// Measured LPC **side-view** bboxes, px (spec §2.1). A pen holds a single
@@ -231,6 +232,16 @@ enum FarmAnimalPlacer {
                 // Walks to the gate, then is drawn in the barn instead of the pen. The
                 // walk starts from exactly where the frozen animal stood, because a
                 // moment ago that is what it was.
+                //
+                // The `dormantSince == nil` guard below is unreachable in production:
+                // `SessionStateTracker.states` stamps `dormantSince` on the very same
+                // poll that first evaluates `.dormant`, so `process.state == .dormant`
+                // always comes with a stamp attached. A session already asleep when the
+                // app launches is not exempt — `idleSince` is stamped `now` on the first
+                // poll, so the earliest possible dormant evaluation (and stamp) is
+                // `Thresholds.frozenDuration` later, at which point it walks out like any
+                // other. The guard stays anyway: it's cheap, defensive, and it's what
+                // `test_aSleeperWithNoRecordedTransitionIsNeverDrawn` exercises.
                 guard pen.gate != .none, let since = process.dormantSince else { return nil }
                 let elapsed = time - since.timeIntervalSinceReferenceDate
                 guard elapsed >= 0, elapsed < gateWalkDuration else { return nil }
