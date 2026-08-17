@@ -441,8 +441,12 @@ final class FarmAnimalDormantTests: XCTestCase {
         XCTAssertTrue(FarmAnimalPlacer.place(pen: gateless, time: 1001).isEmpty)
     }
 
-    /// The whole point of keeping penSize keyed to processes.count. Make this fail on
-    /// purpose once — change penSize to exclude dormant sessions — before trusting it.
+    /// Surviving animals keep the coordinates they had, so the farm never rearranges
+    /// itself when a pen-mate falls asleep. Falsify it by filtering dormant processes
+    /// out of `place` *before* `enumerated()` instead of after — the survivors renumber
+    /// into different slots and this fails. Changing `penSize` does NOT falsify it:
+    /// the comparison pen below copies `w`/`h` from the first instead of recomputing
+    /// them, and `place` never calls `penSize` at all.
     func test_aSleeperLeavingDoesNotMoveItsPenMates() {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let withSleeper = penWithSleeper(dormantSince: t0, others: [.idle, .idle])
