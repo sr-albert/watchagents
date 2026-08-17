@@ -406,6 +406,11 @@ Ranked by **how much the user must act** — that's what salience should track:
 | 3 | `active` | brief flickers | nothing, but it's the interesting moment |
 | 4 | `idle` | **common** | nothing |
 | 5 | `frozen` | **common** | nothing — you just haven't typed in 10 min |
+| 6 | `dormant` | **common** | nothing — it is asleep in the barn, and out of the scene |
+
+`dormant` is the only cue here that *reduces* what is on screen. It adds no colour, no
+motion and no badge — it takes an animal out of the pens entirely. That is why it can be
+common without violating the budget above.
 
 The scene must stay pleasant when nothing is happening — that's the product's premise.
 Delight comes from **ambient life with no state meaning** (staggered grazing, the
@@ -417,6 +422,7 @@ farmer's barnyard loop, the woodland), not from making common states loud.
 |---|---|---|---|---|
 | `idle` | slow eat cycle + rare short **anchored** wander, per-pid phase offset | at the trough, head down | full | trough |
 | `frozen` | **none** — held frame | back of pen | **cool multiply** | — |
+| `dormant` | 3s walk to the gate, then **absent** | in the barn | cool multiply (as `frozen`) | — |
 | `active` | walk cycle, traverses the pen | forward, overlaps bottom rail | full | — |
 | `overloaded` | walk + 1px integer bounce | forward | **red pulse** | **bomb `0105`** |
 | *needs attention* **(RESERVED)** | hop ~2 Hz | **at the gate, facing viewer** | full | **plate `0095`** |
@@ -437,6 +443,17 @@ Frozen keeps its ground shadow and trough. It is present, just resting.
 > tried and reads as broken/absent. Multiplying darkens white too, so it works across
 > all four species and reads as shadow. 45% is the tested value: 30% is invisible on
 > the pig, 60% looks sickly. See `FARM-6-frozen-shade-test.png`.
+
+**Dormant — the frozen multiply, unchanged:**
+
+`dormant` reuses `frozen`'s exact tint. Not a deeper shade: two states separated only by
+how dark they are cannot be told apart side by side, and §7 already rejected alpha fade
+for reading as broken. Dormancy is said by *location* — the animal is in the barn — so the
+shade only has to say "resting", which this value already says across all four species.
+
+Escalation: `idle` → `frozen` (10 min of idle CPU) → `dormant` (4h of terminal idle, *and*
+still frozen). The second condition is load-bearing: without it a session running a long
+autonomous task while you are away would be filed into the barn.
 
 **Overloaded — red pulse, `amt` oscillating `0 → 0.45` at 1.2 Hz:**
 ```
