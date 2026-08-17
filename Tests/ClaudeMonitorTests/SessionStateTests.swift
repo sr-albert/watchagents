@@ -95,13 +95,19 @@ final class SessionStateEvaluatorTests: XCTestCase {
         XCTAssertEqual(state, .active)
     }
 
+    /// Overload is driven through MEM, not CPU: a CPU-driven overload (cpu >= 80) also
+    /// makes `isIdle` false, so the session could never reach the idle/frozen/dormant
+    /// branch at all — the test would pass with the precedence check deleted. Idle CPU
+    /// plus high mem satisfies every precondition for dormant AND overloaded at once, so
+    /// `.overloaded` winning is a real result of the precedence rule, not a side effect
+    /// of the session never being a dormant candidate in the first place.
     func test_overloadedOutranksDormant() {
         let start = Date()
-        let now = start.addingTimeInterval(Thresholds.overloadConfirmWindow + 1)
+        let now = start.addingTimeInterval(Thresholds.frozenDuration + 1)
         var h = history(idle: start)
         h.overloadSince = start
         let state = SessionStateEvaluator.evaluate(
-            cpu: 95, mem: 1, ttyIdle: 86400, history: h, now: now, basis: .both)
+            cpu: 0, mem: 30, ttyIdle: 86400, history: h, now: now, basis: .both)
         XCTAssertEqual(state, .overloaded)
     }
 
