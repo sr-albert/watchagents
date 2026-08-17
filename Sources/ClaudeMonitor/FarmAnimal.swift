@@ -39,6 +39,12 @@ enum FarmAnimalPlacer {
     /// Tile size in px (spec §1, `T = 16`).
     private static let tile = 16
 
+    /// How long a session takes to walk out of its pen after falling asleep. Short,
+    /// because it is the only moment this transition is ever visible: at a four-hour
+    /// threshold it plays about once per session per day, and never at all for a session
+    /// that was already asleep when the app launched.
+    static let gateWalkDuration: Double = 3.0
+
     /// Measured LPC **side-view** bboxes, px (spec §2.1). A pen holds a single
     /// species, so this single constant stands in for the §3.4 lattice's
     /// `wmax`/`hmax` — there's no need to load and trim actual sprite frames just to
@@ -178,7 +184,7 @@ enum FarmAnimalPlacer {
         let span = Double(IW - 6)
         let slot = span / Double(ncols)
 
-        return processes.enumerated().map { i, process in
+        return processes.enumerated().compactMap { i, process -> AnimalPlacement? in
             let col = i % ncols
             let row = i / ncols
             let rank = nrows - 1 - row              // rank 0 = frontmost
@@ -222,9 +228,26 @@ enum FarmAnimalPlacer {
                 by -= off + 2
                 bx += restingDx
             case .dormant:
-                sheet = .eat; frame = 3
-                by -= off + 2
-                bx += restingDx
+                // Walks to the gate, then is drawn in the barn instead of the pen. The
+                // walk starts from exactly where the frozen animal stood, because a
+                // moment ago that is what it was.
+                guard pen.gate != .none, let since = process.dormantSince else { return nil }
+                let elapsed = time - since.timeIntervalSinceReferenceDate
+                guard elapsed >= 0, elapsed < gateWalkDuration else { return nil }
+
+                let restingBX = bx + restingDx
+                let restingBY = by - (off + 2)
+                let targetBX = pen.gateX * tile - w / 2
+                let targetBY = pen.gate == .south ? IY + IH - 1 : IY + h + 1
+                let progress = elapsed / gateWalkDuration
+
+                sheet = .walk
+                frame = walkFrame(slotIndex: i, time: time)
+                bx = restingBX + Int((Double(targetBX - restingBX) * progress).rounded())
+                by = restingBY + Int((Double(targetBY - restingBY) * progress).rounded())
+                // Walking left in the right-facing row is moonwalking — the same rule
+                // `.active` follows, for the same reason.
+                facingRow = targetBX >= restingBX ? 3 : 1
             case .active:
                 // walk sheet, forward, overlaps the bottom rail, traversing its slot
                 // (spec §5.2). The static `bx += off` the other walking states use is

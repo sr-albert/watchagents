@@ -378,3 +378,88 @@ final class FarmAnimalRestingAnchorTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(withNoHistory - active), 12)
     }
 }
+
+private func penWithSleeper(dormantSince: Date?, others: [SessionState] = []) -> PlacedPen {
+    var procs: [ClaudeProcess] = []
+    var sleeper = ClaudeProcess(pid: 200, cpu: 0, mem: 0, cwd: "/proj")
+    sleeper.state = .dormant
+    sleeper.dormantSince = dormantSince
+    procs.append(sleeper)
+    for (i, s) in others.enumerated() {
+        var p = ClaudeProcess(pid: 201 + i, cpu: 0, mem: 0, cwd: "/proj")
+        p.state = s
+        procs.append(p)
+    }
+    let pen = FarmPen(cwd: "/proj", label: "proj", species: .cow, processes: procs)
+    let size = FarmLayoutEngine.penSize(species: .cow, animalCount: procs.count)
+    return PlacedPen(pen: pen, x: 5, y: 5, w: size.w, h: size.h, gate: .south,
+                     gateX: 5 + size.w / 2)
+}
+
+final class FarmAnimalDormantTests: XCTestCase {
+    func test_aSleeperIsStillDrawnWhileItWalksToTheGate() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let pen = penWithSleeper(dormantSince: t0)
+        let p = FarmAnimalPlacer.place(pen: pen, time: 1001)
+        XCTAssertEqual(p.count, 1)
+        XCTAssertEqual(p[0].sheet, .walk)
+    }
+
+    /// Stepped at 0.17s because a cow's walk period is exactly 2.5s — a step that evenly
+    /// divides the period samples the same handful of phases forever (see CLAUDE.md).
+    func test_theGateWalkActuallyMoves() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let pen = penWithSleeper(dormantSince: t0)
+        var seen = Set<Int>()
+        var t = 1000.0
+        while t < 1000 + FarmAnimalPlacer.gateWalkDuration {
+            if let first = FarmAnimalPlacer.place(pen: pen, time: t).first { seen.insert(first.bx) }
+            t += 0.17
+        }
+        XCTAssertGreaterThan(seen.count, 1, "the walk to the gate must not stand still")
+    }
+
+    func test_aSleeperIsGoneOnceTheWalkHasFinished() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let pen = penWithSleeper(dormantSince: t0)
+        let p = FarmAnimalPlacer.place(pen: pen, time: 1000 + FarmAnimalPlacer.gateWalkDuration + 1)
+        XCTAssertTrue(p.isEmpty)
+    }
+
+    /// A session already asleep when the app launched has no recorded transition, so
+    /// there is nothing to animate and it belongs in the barn immediately.
+    func test_aSleeperWithNoRecordedTransitionIsNeverDrawn() {
+        let pen = penWithSleeper(dormantSince: nil)
+        XCTAssertTrue(FarmAnimalPlacer.place(pen: pen, time: 0).isEmpty)
+    }
+
+    func test_aSleeperInAGatelessPenIsNeverDrawn() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let base = penWithSleeper(dormantSince: t0)
+        let gateless = PlacedPen(pen: base.pen, x: base.x, y: base.y, w: base.w, h: base.h,
+                                 gate: .none, gateX: base.gateX)
+        XCTAssertTrue(FarmAnimalPlacer.place(pen: gateless, time: 1001).isEmpty)
+    }
+
+    /// The whole point of keeping penSize keyed to processes.count. Make this fail on
+    /// purpose once — change penSize to exclude dormant sessions — before trusting it.
+    func test_aSleeperLeavingDoesNotMoveItsPenMates() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let withSleeper = penWithSleeper(dormantSince: t0, others: [.idle, .idle])
+        let awake = FarmAnimalPlacer.place(pen: withSleeper, time: 1000 + FarmAnimalPlacer.gateWalkDuration + 1)
+
+        var frozenProcs = withSleeper.pen.processes
+        frozenProcs[0].state = .frozen
+        frozenProcs[0].dormantSince = nil
+        let pen = FarmPen(cwd: "/proj", label: "proj", species: .cow, processes: frozenProcs)
+        let comparison = PlacedPen(pen: pen, x: withSleeper.x, y: withSleeper.y,
+                                   w: withSleeper.w, h: withSleeper.h,
+                                   gate: .south, gateX: withSleeper.gateX)
+        let all = FarmAnimalPlacer.place(pen: comparison, time: 1000 + FarmAnimalPlacer.gateWalkDuration + 1)
+
+        XCTAssertEqual(awake.count, 2)
+        XCTAssertEqual(awake.map(\.pid), [201, 202])
+        XCTAssertEqual(awake.map(\.bx), all.filter { $0.pid != 200 }.map(\.bx))
+        XCTAssertEqual(awake.map(\.by), all.filter { $0.pid != 200 }.map(\.by))
+    }
+}
