@@ -75,15 +75,17 @@ final class FarmCensusTests: XCTestCase {
         XCTAssertEqual(row.mem, 3.0, accuracy: 0.0001)
     }
 
+    /// Shared by every test in this file that needs "the state that wins" without wiring
+    /// up a full pen: builds one pen out of the given states and reads back its `worst`.
+    private func worst(_ states: [SessionState]) -> SessionState {
+        let procs = states.enumerated().map { process($0.offset, cwd: "/a", state: $0.element) }
+        return FarmCensus.rows(for: pens(procs))[0].worst
+    }
+
     /// A pen shows the state of the animal that most wants looking at, not the state of
     /// the majority — one overloaded session among nine idle ones is the whole reason to
     /// glance at the row.
     func test_aRowReportsTheStateMostNeedingAttention() {
-        func worst(_ states: [SessionState]) -> SessionState {
-            let procs = states.enumerated().map { process($0.offset, cwd: "/a", state: $0.element) }
-            return FarmCensus.rows(for: pens(procs))[0].worst
-        }
-
         XCTAssertEqual(worst([.idle, .idle]), .idle)
         XCTAssertEqual(worst([.idle, .active]), .active)
         XCTAssertEqual(worst([.active, .frozen]), .frozen)
@@ -110,5 +112,44 @@ final class FarmCensusTests: XCTestCase {
         XCTAssertEqual(totals.cpu, 0)
         XCTAssertEqual(totals.states, FarmCensus.StateCensus())
         XCTAssertEqual(FarmCensus.rows(for: []), [])
+    }
+
+    func test_dormantSessionsAreTalliedSeparatelyFromFrozen() {
+        let states = FarmCensus.totals(for: pens([
+            process(1, cwd: "/a", state: .frozen),
+            process(2, cwd: "/b", state: .dormant),
+            process(3, cwd: "/c", state: .dormant),
+        ])).states
+
+        XCTAssertEqual(states.frozen, 1)
+        XCTAssertEqual(states.dormant, 2)
+    }
+
+    /// Dormant is the least salient state there is: it takes an animal out of the scene
+    /// rather than adding a cue to it. A pen sign should say "asleep" only when there is
+    /// nothing else in the pen to say.
+    func test_dormantIsTheLeastSalientState() {
+        XCTAssertEqual(worst([.dormant, .idle]), .idle)
+        XCTAssertEqual(worst([.dormant, .active]), .active)
+        XCTAssertEqual(worst([.dormant, .frozen]), .frozen)
+        XCTAssertEqual(worst([.dormant, .overloaded]), .overloaded)
+        XCTAssertEqual(worst([.dormant]), .dormant)
+    }
+
+    func test_sleepersListsEveryDormantSessionAndNothingElse() {
+        let rows = FarmCensus.sleepers(for: pens([
+            process(3, cwd: "/home/zed", state: .dormant),
+            process(1, cwd: "/home/apex", state: .dormant),
+            process(2, cwd: "/home/apex", state: .frozen),
+        ]))
+
+        XCTAssertEqual(rows.map(\.pid), [1, 3])
+        XCTAssertEqual(rows.map(\.label), ["apex", "zed"])
+    }
+
+    func test_sleepersIsEmptyWhenNobodyIsAsleep() {
+        XCTAssertTrue(FarmCensus.sleepers(for: pens([
+            process(1, cwd: "/a", state: .idle),
+        ])).isEmpty)
     }
 }

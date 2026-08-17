@@ -6,14 +6,15 @@ import Foundation
 /// because the panel is the one place the farm states aggregates outright — everywhere
 /// else they live in posture, colour and motion (spec §5.1).
 enum FarmCensus {
-    /// How many animals are in each state, right now. Four explicit fields rather than a
-    /// dictionary keyed by `SessionState`: the set is closed and fixed at four, and a
+    /// How many animals are in each state, right now. Five explicit fields rather than a
+    /// dictionary keyed by `SessionState`: the set is closed and fixed at five, and a
     /// dictionary would make the panel unwrap an optional per row to render a zero.
     struct StateCensus: Equatable {
         var idle = 0
         var active = 0
         var overloaded = 0
         var frozen = 0
+        var dormant = 0
     }
 
     struct Totals: Equatable {
@@ -50,7 +51,7 @@ enum FarmCensus {
                 case .active: states.active += 1
                 case .overloaded: states.overloaded += 1
                 case .frozen: states.frozen += 1
-                case .dormant: states.frozen += 1
+                case .dormant: states.dormant += 1
                 }
             }
         }
@@ -81,14 +82,35 @@ enum FarmCensus {
     /// Attention, not frequency: one overloaded session among nine idle ones is the whole
     /// reason to look at a row, so it sets the row's state. Frozen outranks active because
     /// a session stuck for ten minutes is a thing to go and deal with; an active one is
-    /// the farm working as intended.
+    /// the farm working as intended. Dormant sits below idle: it is the one state that
+    /// asks for less than nothing, having already taken its animal out of the scene, so a
+    /// pen reads as asleep only when every session in it is.
     private static func severity(_ state: SessionState) -> Int {
         switch state {
-        case .overloaded: return 3
-        case .frozen: return 2
-        case .dormant: return 2
-        case .active: return 1
-        case .idle: return 0
+        case .overloaded: return 4
+        case .frozen: return 3
+        case .active: return 2
+        case .idle: return 1
+        case .dormant: return 0
         }
+    }
+
+    /// One line in the barn's roster. Species travels as the enum, not its emoji, so the
+    /// view decides how to draw it.
+    struct SleeperRow: Equatable {
+        let pid: Int
+        let label: String
+        let species: AnimalSpecies
+    }
+
+    /// Who is asleep in the barn. Sorted by project then pid so the list does not
+    /// reshuffle between polls — the same reason `rows` refuses to sort by load.
+    static func sleepers(for pens: [FarmPen]) -> [SleeperRow] {
+        pens.flatMap { pen in
+            pen.processes
+                .filter { $0.state == .dormant }
+                .map { SleeperRow(pid: $0.pid, label: pen.label, species: pen.species) }
+        }
+        .sorted { ($0.label, $0.pid) < ($1.label, $1.pid) }
     }
 }
