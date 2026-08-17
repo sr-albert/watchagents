@@ -490,10 +490,15 @@ private func draw(scene: BuiltScene, scale: Int, time: Double, canvasSize: CGSiz
         ctx.draw(pixelImage(img), in: CGRect(x: badge.x, y: badge.y, width: img.width, height: img.height))
     }
 
-    // 7b. The barn's doors, when the farmhouse is open. Painted over the shut pair the
-    // static layer already baked in, rather than rebuilt into it: that layer is cached and
-    // only regenerated when the layout changes, so putting door state in it would discard
-    // the whole barn, ground and scenery on every click.
+    // 7b. The barn's doors, when the farmhouse is open or anyone is asleep inside. Painted
+    // over the shut pair the static layer already baked in, rather than rebuilt into it:
+    // that layer is cached and only regenerated when the layout changes, so putting door
+    // state in it would discard the whole barn, ground and scenery on every click.
+    //
+    // Two meanings share one visual, which is a real cost — ajar no longer means
+    // "sleepers" on its own. It reads as one sentence anyway: the doors are open when the
+    // barn is in use, by you or by something sleeping in it. And the modal is only open
+    // while you are looking at the roster, which answers the question precisely.
     if doorsOpen, let bx = scene.layout.barnX, let by = scene.layout.barnY {
         for t in FarmScenery.barnDoorTiles(x: bx, y: by, open: true) {
             guard let img = FarmAssets.tile(t.tile) else { continue }
@@ -558,6 +563,9 @@ struct FarmView: View {
 
     private var pens: [FarmPen] { FarmGrouping.pens(from: viewModel.snapshot.processes) }
 
+    /// Ajar means the barn is in use — by you, or by something sleeping in it.
+    private var barnOccupied: Bool { !FarmCensus.sleepers(for: pens).isEmpty }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -593,7 +601,8 @@ struct FarmView: View {
                         .ignoresSafeArea()
                         .onTapGesture { houseOpen = false }
                     FarmHouseModal(usage: viewModel.usageResult,
-                                   overloadSettings: viewModel.overloadSettings) {
+                                   overloadSettings: viewModel.overloadSettings,
+                                   sleepers: FarmCensus.sleepers(for: pens)) {
                         houseOpen = false
                     }
                 }
@@ -635,6 +644,11 @@ struct FarmView: View {
             let tile = CGFloat(16 * scale)
             let contentWidth = max(geo.size.width, CGFloat(scene.contentCols) * tile)
             let contentHeight = max(geo.size.height, CGFloat(scene.contentRows) * tile)
+            // Captured once here rather than read inside the `Canvas` closure below: that
+            // closure redraws at 12Hz and `barnOccupied` calls the allocating
+            // `FarmCensus.sleepers(for:)`, so evaluating it per frame would undo the whole
+            // point of throttling the timeline.
+            let barnDoorsOpen = houseOpen || barnOccupied
 
             ScrollView(.vertical, showsIndicators: true) {
                 // The fastest thing on screen is the 6fps walk cycle (bounce is
@@ -647,7 +661,7 @@ struct FarmView: View {
                         draw(scene: scene, scale: scale,
                              time: context.date.timeIntervalSinceReferenceDate,
                              canvasSize: size,
-                             doorsOpen: houseOpen, into: &ctx)
+                             doorsOpen: barnDoorsOpen, into: &ctx)
                     }
                     .frame(width: contentWidth, height: contentHeight)
                     // Anchored to the animal, inside the scrolling content, so the card

@@ -1,20 +1,23 @@
 import SwiftUI
 
-/// What is inside the barn when you open its doors: the storehouse, and the controls.
+/// What is inside the barn when you open its doors: the sleepers, the storehouse, and the
+/// controls.
 ///
 /// The farm's other two surfaces answer "what is this animal doing" (`FarmDetailCard`) and
 /// "what is this project doing" (`FarmProjectModal`); the side panel answers "what is the
-/// whole farm doing". This one is not about sessions at all. A barn stores the harvest, so
-/// it holds the usage block — tokens, cost, burn — given the room the panel's four cramped
-/// lines cannot; and a farmhouse is where the farmer lives, so it holds the settings that
-/// were otherwise stranded in the menu-bar dropdown, out of reach whenever the farm window
-/// is the thing you are looking at.
+/// whole farm doing". This one used to claim it was not about sessions at all. It is now:
+/// a barn is where animals sleep, and sessions untouched for hours are bedded down in here
+/// rather than left standing in their pens. It also holds the usage block — a barn stores
+/// the harvest — given the room the panel's four cramped lines cannot; and the settings
+/// that were otherwise stranded in the menu-bar dropdown, out of reach whenever the farm
+/// window is the thing you are looking at.
 ///
 /// Read-and-set, unlike the other two, which are read-only. The scrim, the centring and
 /// the dismiss gestures belong to `FarmView`.
 struct FarmHouseModal: View {
     let usage: UsageBlockResult
     @ObservedObject var overloadSettings: OverloadSettings
+    let sleepers: [FarmCensus.SleeperRow]
     let onClose: () -> Void
 
     /// Owned here rather than passed in, matching `DropdownView`: the manager reads the
@@ -25,6 +28,8 @@ struct FarmHouseModal: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            rule
+            sleeping
             rule
             storehouse
             rule
@@ -57,6 +62,32 @@ struct FarmHouseModal: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
+        }
+    }
+
+    /// Project and pid only, deliberately. A sleeping session has no animal to click and
+    /// so no `FarmDetailCard`; the pid is what you would paste into a terminal anyway,
+    /// which is the same judgement the detail card already records about itself.
+    @ViewBuilder
+    private var sleeping: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            section("ASLEEP IN THE BARN")
+            if sleepers.isEmpty {
+                note("Nobody is sleeping. Every session has been touched in the last few hours.")
+            } else {
+                ForEach(sleepers, id: \.pid) { row in
+                    HStack(spacing: 8) {
+                        Text(row.species.rawValue)
+                            .font(.system(size: 12))
+                        Text(row.label)
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                        Spacer(minLength: 0)
+                        Text("PID \(row.pid)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .opacity(0.7)
+                    }
+                }
+            }
         }
     }
 

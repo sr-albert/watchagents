@@ -13,7 +13,7 @@ final class FarmHouseModalTests: XCTestCase {
     func test_house_bodyEvaluatesForEveryUsageResult() {
         let settings = OverloadSettings(defaults: UserDefaults(suiteName: #function)!)
         for usage: UsageBlockResult in [.active(block), .noActiveBlock, .unavailable] {
-            _ = FarmHouseModal(usage: usage, overloadSettings: settings, onClose: {}).body
+            _ = FarmHouseModal(usage: usage, overloadSettings: settings, sleepers: [], onClose: {}).body
         }
     }
 
@@ -25,6 +25,6 @@ final class FarmHouseModalTests: XCTestCase {
         let over = UsageBlock(pct: 140, usedTokens: "2.8M", maxTokens: "2.0M", cost: 9.9,
                               burnRate: "4,000", estimatedCost: 12.0, resetIn: "12m",
                               startLocal: "08:00", endLocal: "13:00")
-        _ = FarmHouseModal(usage: .active(over), overloadSettings: settings, onClose: {}).body
+        _ = FarmHouseModal(usage: .active(over), overloadSettings: settings, sleepers: [], onClose: {}).body
     }
 }
