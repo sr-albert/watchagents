@@ -16,3 +16,15 @@ citations keep resolving after the session that wrote them ended.
 
 Everything else from that scratch directory — roughly eighty exploratory PNGs, a dozen
 mock iterations, probe binaries — was deliberately not kept.
+
+## `feed-and-harvest/`
+
+A separate, later rescue, from a different session's scratchpad. The recovered state of an
+**unfinished** brainstorm about turning the farm's feed props into a token-budget reading —
+straw bale for budget remaining, milk vat for spend. It stopped mid-design on a real blocker
+and was never specced, planned or built. See that directory's own README; it records what was
+settled, exactly where it stalled and why, the tile IDs it had chosen, and the three routes
+still open.
+
+Nothing in it is adopted. It is here for the same reason as everything above: the work existed
+only in a directory that dies with its session.
