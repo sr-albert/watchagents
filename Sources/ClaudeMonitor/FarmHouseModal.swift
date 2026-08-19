@@ -150,6 +150,33 @@ struct FarmHouseModal: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
             }
+            HStack(spacing: 8) {
+                Text("Block budget")
+                    .font(.system(.callout, design: .rounded))
+                Spacer(minLength: 0)
+                TextField("", value: Binding(
+                    get: { settings.tokenCeiling },
+                    set: { settings.tokenCeiling = Self.clampedTokenCeiling($0) }
+                ), formatter: Self.tokenFormatter)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 90)
+            }
+            HStack(spacing: 8) {
+                Text("Block cost")
+                    .font(.system(.callout, design: .rounded))
+                Spacer(minLength: 0)
+                Text("$")
+                    .opacity(0.65)
+                TextField("", value: Binding(
+                    get: { settings.dollarCeiling },
+                    set: { settings.dollarCeiling = Self.clampedDollarCeiling($0) }
+                ), formatter: Self.dollarFormatter)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 90)
+            }
+            note("Seeded from your heaviest recorded block. Edit either to change what the farmyard measures against.")
             Toggle("Launch at login", isOn: Binding(
                 get: { loginItem.isEnabled },
                 set: { loginItem.setEnabled($0) }
@@ -157,6 +184,36 @@ struct FarmHouseModal: View {
             .font(.system(.callout, design: .rounded))
         }
     }
+
+    /// `UsageBlockFetcher` decides a ceiling is configured by testing `tokenCeiling > 0`.
+    /// Letting this field reach zero doesn't clear the ceiling — it silently un-seeds it:
+    /// `ceilingsSeeded` stays true so seeding never re-runs, but the fetcher falls back to
+    /// the moving denominator anyway, and the gauge drifts again for no reason the user can
+    /// see. 1 is the smallest value that keeps the fetcher's `> 0` check true.
+    static func clampedTokenCeiling(_ raw: Int) -> Int {
+        max(1, raw)
+    }
+
+    /// Same failure mode as `clampedTokenCeiling`, in dollars. `$0.01` is the smallest
+    /// positive amount at the precision the rest of the barn already displays costs in.
+    static func clampedDollarCeiling(_ raw: Double) -> Double {
+        max(0.01, raw)
+    }
+
+    private static let tokenFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
+    private static let dollarFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
 
     /// Last, behind its own rule, and not styled as anything inviting. The barn is a
     /// decorative building people will click out of curiosity, and quitting the app should

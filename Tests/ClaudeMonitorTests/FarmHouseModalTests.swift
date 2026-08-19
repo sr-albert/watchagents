@@ -31,4 +31,21 @@ final class FarmHouseModalTests: XCTestCase {
                               observedMaxCost: 9.9)
         _ = FarmHouseModal(usage: .active(over), settings: settings, sleepers: [], onClose: {}).body
     }
+
+    /// `UsageBlockFetcher` treats `tokenCeiling <= 0` as "not configured" and falls back to
+    /// the moving denominator this feature exists to remove. A zero (or negative, from a
+    /// pasted value) ceiling must never reach `FarmSettings`, or the gauge silently starts
+    /// drifting again with nothing in the log to explain why.
+    func test_clampedTokenCeiling_neverReturnsZeroOrBelow() {
+        XCTAssertEqual(FarmHouseModal.clampedTokenCeiling(0), 1)
+        XCTAssertEqual(FarmHouseModal.clampedTokenCeiling(-5), 1)
+        XCTAssertEqual(FarmHouseModal.clampedTokenCeiling(500_000), 500_000)
+    }
+
+    /// Same failure mode, in dollars.
+    func test_clampedDollarCeiling_neverReturnsZeroOrBelow() {
+        XCTAssertEqual(FarmHouseModal.clampedDollarCeiling(0), 0.01, accuracy: 0.0001)
+        XCTAssertEqual(FarmHouseModal.clampedDollarCeiling(-3.5), 0.01, accuracy: 0.0001)
+        XCTAssertEqual(FarmHouseModal.clampedDollarCeiling(9.75), 9.75, accuracy: 0.0001)
+    }
 }
