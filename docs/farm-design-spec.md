@@ -595,10 +595,11 @@ the same `tokenCeiling`/`dollarCeiling` that `FarmSettings` seeds once from your
 heaviest recorded block and then freezes, editable from the barn's settings.
 `tokenCeiling` is also the denominator behind four other readouts: the always-visible
 **menu-bar percentage**, the dropdown's progress bar and label, the storehouse, and the
-info panel. `dollarCeiling` has no such reach — it is the vat's denominator and nothing
-else's. Five places reading `tokenCeiling` is the point — one configured ceiling, not
-several that can quietly drift apart — and the vat is the one place that reads a second,
-independent number instead.
+info panel. `dollarCeiling` is the vat's denominator and nothing else's — the storehouse
+prints it as a figure alongside what was spent, but does not divide by it, so that is a
+number shown, not a second denominator. Five places reading `tokenCeiling` is the point
+— one configured ceiling, not several that can quietly drift apart — and the vat is the
+one place that divides by a second, independent number instead.
 
 ### 6.2 Tree stands — the rule that makes scenery deliberate
 
