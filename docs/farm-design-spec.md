@@ -418,6 +418,19 @@ The scene must stay pleasant when nothing is happening — that's the product's 
 Delight comes from **ambient life with no state meaning** (staggered grazing, the
 farmer's barnyard loop, the woodland), not from making common states loud.
 
+**The feed gauge is not in this table, and that is deliberate.** The ranking above
+scores *per-session* states — how urgently one animal needs you. The gauge (§6.1) is a
+*whole-farm* reading: three bales and a vat describing the current usage block, not any
+one pid. It has nothing to compete for rank against, because it is not answering the
+question this table answers.
+
+It is also silent at every level, the same way `dormant` is silent at rest: no motion,
+no colour shift, no badge, whether the third bale just came down or the vat just topped
+out. That silence is structural, not a restraint someone could loosen later — the gauge
+is baked into the cached static layer (§6.1), which by construction cannot animate. So
+it can never out-rank `overloaded` for attention the way a badge or a pulse would; the
+only thing it is allowed to say is what is already standing or filled on the ground.
+
 ### 5.2 Table
 
 | state | motion | position | colour | prop |
@@ -542,10 +555,45 @@ roof row 2 : 0064  0065 ×5  0066
 wall rows  : 0072  0073 ×5  0075
 ground row : 0084 at x+1 and x+w-2 ; 0074 0074 at centre (double door)
 ```
-Farmyard cluster — **always clustered, never scattered singly**: `0093 0093 0094`
-(hay) at the barn's right shoulder, `0116` pitchfork on the left wall, `0106`/`0107`
-barrel+bucket, `0130` chest, `0057` mailbox on the lane, `0083` signpost at the
-crossroads, `0103` character by the door for scale and life.
+Farmyard cluster — **always clustered, never scattered singly**: `0094` beehive at the
+barn's right shoulder, `0116` pitchfork on the left wall, `0106`/`0107`
+barrel+bucket, `0057` mailbox on the lane, `0083` signpost at the
+crossroads, `0103` character by the door for scale and life. The right shoulder also
+carries the feed gauge (below): three `0093` bales stacked in the column the hay pair
+used to occupy, and the relocated `0130` one column over — no longer a chest, but the
+vat the gauge's fill is painted into.
+
+**Two of those tiles are now a gauge, not decoration.** The three `0093` bales are a
+stack: one comes down for every third of the block's *token* ceiling spent, `ceil`'d
+over what remains, so a single remaining token still leaves one standing. The relocated
+`0130` is the vat's empty tile; its fill is painted over it, not drawn as new art (§7
+compromise 4 has the `floor`-over-thirds rule and the byte-equality proof). `0094`
+beehive, `0106`/`0107` barrel+bucket and `0116` pitchfork keep doing exactly what they
+always did — pure decoration, no reading required. The split exists so the corner still
+looks like a farmyard corner and not an instrument panel: two props start meaning
+something, and the rest of the cluster stays exactly as busy and as legible as before.
+
+The four gauge cells are reserved at the barn's own buffer (`FarmScenery.swift:129`),
+the same place and mechanism as the barn footprint itself. That reservation does **not**
+keep pens off the cluster — pen positions are already fixed by `FarmLayoutEngine.layout`
+before this scenery pass runs at all, so nothing here could move a pen even if it tried.
+What it actually protects the four cells from is the *other* scenery passes that run
+later in the same function: the seeded mushroom scatter and the last-row hay yard
+(§6.3), both of which test the same occupancy set this reservation feeds. `gaugeProps`
+carries its own, separate pen-collision check — that is what actually keeps the gauge
+off a pen, and it is why the whole cluster is withheld together rather than half-drawn:
+a bale or the vat quietly failing to appear because it landed on a pen would read as
+spent budget, and the gauge cannot afford that lie — the same reason it returns no props
+at all for missing usage data rather than a zeroed set. Absent and empty have to stay
+visually distinct.
+
+The two ceilings behind the bales and the vat are not private to this corner. They are
+the same `tokenCeiling`/`dollarCeiling` that `FarmSettings` seeds once from your
+heaviest recorded block and then freezes, editable from the barn's settings, and they are also
+the denominator behind four other readouts: the always-visible **menu-bar percentage**,
+the dropdown's progress bar and label, the storehouse, and the info panel. Five places
+reading two numbers is the point — one configured ceiling, not several that can quietly
+drift apart.
 
 ### 6.2 Tree stands — the rule that makes scenery deliberate
 
@@ -666,6 +714,13 @@ tree; `< 44` → a bush (`0005`/`0028`).
 4. **No particles, no Zzz, no emote bubbles, no water/pond/well/scarecrow/silo, no
    night tiles.** Every cue above is built from tint, position, held frames and
    existing prop tiles. Nothing needs new art except the font.
+
+   The feed gauge's vat (§6.1) looks like it spends the banned "well" — liquid sitting
+   in a basin — but it doesn't: `FarmVat.compose` paints solid, measured-colour rows
+   over the existing `0130` tile, the same class of operation as the §5.3 state tints, a
+   colour transform on shipped pixels rather than new art. That claim is checkable, not
+   asserted: at level 3 (budget exhausted) the composite is byte-identical to the
+   already-shipped `0131` tile, which is what `VatFillTests` pins.
 5. **Text can't sit on the pixel grid via SwiftUI `Text`** — hence the bundled bitmap
    font (§3.2). The mockup fakes it with a 1-bit threshold mask, which you can't do in
    `Canvas`.
