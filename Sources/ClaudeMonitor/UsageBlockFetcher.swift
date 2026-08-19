@@ -32,6 +32,14 @@ struct UsageBlock: Equatable {
     let resetIn: String
     let startLocal: String
     let endLocal: String
+    /// The active block's token count, unformatted. `usedTokens` above is the same number
+    /// formatted for display; a gauge needs to do arithmetic on it.
+    let rawTokens: Int
+    /// The largest values across every recorded block. Their ONLY purpose is seeding the
+    /// ceilings on first run — they must never become a denominator again, which is what
+    /// `pct` used to divide by and why it moved every time you had a heavy day.
+    let observedMaxTokens: Int
+    let observedMaxCost: Double
 }
 
 enum UsageBlockResult: Equatable {
@@ -60,7 +68,7 @@ enum UsageBlockParsing {
         isoFractionalFormatter.date(from: string) ?? isoFormatter.date(from: string)
     }
 
-    static func parse(_ data: Data, now: Date) -> UsageBlockResult {
+    static func parse(_ data: Data, now: Date, tokenCeiling: Int) -> UsageBlockResult {
         guard let response = try? JSONDecoder().decode(CcusageResponse.self, from: data) else {
             return .unavailable
         }
@@ -72,8 +80,13 @@ enum UsageBlockParsing {
             return .unavailable
         }
 
-        let maxTokens = response.blocks.map { $0.totalTokens }.max() ?? active.totalTokens
-        let pct = maxTokens > 0 ? Int(Double(active.totalTokens) * 100 / Double(maxTokens)) : 0
+        let observedMaxTokens = response.blocks.map { $0.totalTokens }.max() ?? active.totalTokens
+        let observedMaxCost = response.blocks.map { $0.costUSD }.max() ?? active.costUSD
+        // The ceiling is the denominator once it has been seeded. Until then there is no
+        // configured value, so the observed maximum stands in — it is a poor denominator
+        // (it moves) but a first run has nothing better, and it is replaced within one poll.
+        let denominator = tokenCeiling > 0 ? tokenCeiling : observedMaxTokens
+        let pct = denominator > 0 ? Int(Double(active.totalTokens) * 100 / Double(denominator)) : 0
         let remainingMinutes = max(0, Int(endTime.timeIntervalSince(now) / 60))
 
         let local = DateFormatter()
@@ -82,13 +95,16 @@ enum UsageBlockParsing {
         return .active(UsageBlock(
             pct: pct,
             usedTokens: Formatting.tokens(active.totalTokens),
-            maxTokens: Formatting.tokens(maxTokens),
+            maxTokens: Formatting.tokens(denominator),
             cost: active.costUSD,
             burnRate: Formatting.tokens(Int(active.burnRate?.tokensPerMinute ?? 0)),
             estimatedCost: active.projection?.totalCost ?? 0,
             resetIn: Formatting.duration(minutes: remainingMinutes),
             startLocal: local.string(from: startTime),
-            endLocal: local.string(from: endTime)
+            endLocal: local.string(from: endTime),
+            rawTokens: active.totalTokens,
+            observedMaxTokens: observedMaxTokens,
+            observedMaxCost: observedMaxCost
         ))
     }
 }
@@ -113,8 +129,8 @@ final class UsageBlockFetcher {
         return data.isEmpty ? nil : data
     }
 
-    func fetch() -> UsageBlockResult {
+    func fetch(tokenCeiling: Int) -> UsageBlockResult {
         guard let data = run() else { return .unavailable }
-        return UsageBlockParsing.parse(data, now: Date())
+        return UsageBlockParsing.parse(data, now: Date(), tokenCeiling: tokenCeiling)
     }
 }

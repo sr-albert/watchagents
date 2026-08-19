@@ -34,7 +34,7 @@ final class UsageBlockParsingTests: XCTestCase {
 
         let now = isoFormatter.date(from: "2026-08-13T12:30:00Z")!
 
-        let result = UsageBlockParsing.parse(json, now: now)
+        let result = UsageBlockParsing.parse(json, now: now, tokenCeiling: 0)
 
         guard case .active(let block) = result else {
             return XCTFail("expected active block, got \(result)")
@@ -82,7 +82,7 @@ final class UsageBlockParsingTests: XCTestCase {
 
         let now = isoFormatter.date(from: "2026-08-13T12:30:00Z")!
 
-        let result = UsageBlockParsing.parse(json, now: now)
+        let result = UsageBlockParsing.parse(json, now: now, tokenCeiling: 0)
 
         guard case .active(let block) = result else {
             return XCTFail("expected active block, got \(result)")
@@ -108,12 +108,59 @@ final class UsageBlockParsingTests: XCTestCase {
         {"blocks": [{"totalTokens": 100, "costUSD": 0, "isActive": false, "startTime": "2026-08-13T08:00:00Z", "endTime": "2026-08-13T09:00:00Z"}]}
         """.data(using: .utf8)!
 
-        XCTAssertEqual(UsageBlockParsing.parse(json, now: Date()), .noActiveBlock)
+        XCTAssertEqual(UsageBlockParsing.parse(json, now: Date(), tokenCeiling: 0), .noActiveBlock)
     }
 
     func test_parse_malformedJSON_returnsUnavailable() {
         let json = "not json".data(using: .utf8)!
 
-        XCTAssertEqual(UsageBlockParsing.parse(json, now: Date()), .unavailable)
+        XCTAssertEqual(UsageBlockParsing.parse(json, now: Date(), tokenCeiling: 0), .unavailable)
+    }
+
+    /// Two blocks, one active. The observed maxima come from ALL blocks, because they exist
+    /// only to seed the ceilings; the displayed denominator comes from the ceiling passed in.
+    private func twoBlockFixture() -> Data {
+        """
+        {"blocks":[
+          {"totalTokens":900,"costUSD":9.0,"isActive":false,
+           "startTime":"2026-08-18T00:00:00.000Z","endTime":"2026-08-18T05:00:00.000Z"},
+          {"totalTokens":300,"costUSD":2.0,"isActive":true,
+           "startTime":"2026-08-18T05:00:00.000Z","endTime":"2026-08-18T10:00:00.000Z"}
+        ]}
+        """.data(using: .utf8)!
+    }
+
+    func test_parseExposesRawTokensAndTheObservedMaxima() {
+        let now = ISO8601DateFormatter().date(from: "2026-08-18T06:00:00Z")!
+        guard case .active(let b) = UsageBlockParsing.parse(twoBlockFixture(), now: now,
+                                                            tokenCeiling: 1000) else {
+            return XCTFail("expected an active block")
+        }
+        XCTAssertEqual(b.rawTokens, 300)
+        XCTAssertEqual(b.observedMaxTokens, 900)
+        XCTAssertEqual(b.observedMaxCost, 9.0, accuracy: 0.0001)
+    }
+
+    /// The denominator is the configured ceiling, not the heaviest block. With a ceiling of
+    /// 1000 and 300 spent, that is 30% — against the old observed-max denominator it would
+    /// have read 33%, so this test fails if the demotion is not done.
+    func test_percentageIsAgainstTheConfiguredCeiling() {
+        let now = ISO8601DateFormatter().date(from: "2026-08-18T06:00:00Z")!
+        guard case .active(let b) = UsageBlockParsing.parse(twoBlockFixture(), now: now,
+                                                            tokenCeiling: 1000) else {
+            return XCTFail("expected an active block")
+        }
+        XCTAssertEqual(b.pct, 30)
+    }
+
+    /// Before seeding there is no ceiling. Falling back to the observed maximum keeps the
+    /// storehouse sensible on a first run rather than dividing by zero.
+    func test_anUnsetCeilingFallsBackToTheObservedMaximum() {
+        let now = ISO8601DateFormatter().date(from: "2026-08-18T06:00:00Z")!
+        guard case .active(let b) = UsageBlockParsing.parse(twoBlockFixture(), now: now,
+                                                            tokenCeiling: 0) else {
+            return XCTFail("expected an active block")
+        }
+        XCTAssertEqual(b.pct, 33)
     }
 }

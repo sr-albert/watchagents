@@ -81,8 +81,13 @@ final class MonitorViewModel: ObservableObject {
         isRefreshingUsage = true
 
         let fetcher = usageFetcher
+        // Captured here, on the main actor, the same way `basis` and `dormantAfter` are
+        // above — reading @MainActor settings from inside Task.detached is the mistake.
+        // Task 3 gives FarmSettings a real tokenCeiling; until then 0 means "not yet
+        // configured" and parse falls back to the observed maximum.
+        let tokenCeiling = 0
         Task.detached { [weak self] in
-            let result = fetcher.fetch()
+            let result = fetcher.fetch(tokenCeiling: tokenCeiling)
             guard let self else { return }
             await MainActor.run {
                 self.usageResult = result

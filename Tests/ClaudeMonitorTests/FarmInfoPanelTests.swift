@@ -16,7 +16,9 @@ final class FarmInfoPanelTests: XCTestCase {
 
     private let block = UsageBlock(pct: 62, usedTokens: "1.2M", maxTokens: "2.0M", cost: 4.21,
                                    burnRate: "1,203", estimatedCost: 6.80, resetIn: "1h 14m",
-                                   startLocal: "09:00", endLocal: "14:00")
+                                   startLocal: "09:00", endLocal: "14:00",
+                                   rawTokens: 1_200_000, observedMaxTokens: 2_000_000,
+                                   observedMaxCost: 4.21)
 
     @MainActor
     func test_panel_bodyEvaluatesForAPopulatedFarm() {
