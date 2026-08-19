@@ -116,6 +116,10 @@ struct FarmHouseModal: View {
                     .font(.system(size: 11, design: .monospaced))
                     .opacity(0.85)
                 stat("Spent", String(format: "$%.2f", block.cost))
+                // The token line above shows what it is measured against
+                // (`block.maxTokens`); without this the vat can be read as full with no
+                // way to see what it is full of short of opening these settings.
+                stat("Budget", String(format: "$%.2f", settings.dollarCeiling))
                 stat("Burn", "\(block.burnRate) tok/min")
                 stat("Projected", String(format: "$%.2f", block.estimatedCost))
                 stat("Resets in", block.resetIn)
@@ -211,6 +215,10 @@ struct FarmHouseModal: View {
 
     /// Same failure mode as `clampedTokenCeiling`, in dollars. `$0.01` is the smallest
     /// positive amount at the precision the rest of the barn already displays costs in.
+    ///
+    /// Argument order is load-bearing: `max(0.01, raw)` returns `0.01` if `raw` is NaN,
+    /// but `max(raw, 0.01)` returns NaN, because Swift's `max` is `y >= x ? y : x` and
+    /// any comparison against NaN is false. Do not reorder these for tidiness.
     static func clampedDollarCeiling(_ raw: Double) -> Double {
         max(0.01, raw)
     }

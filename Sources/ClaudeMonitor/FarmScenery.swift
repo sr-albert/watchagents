@@ -127,9 +127,10 @@ enum FarmScenery {
         }
         if let bx = layout.barnX, let by = layout.barnY {
             mark(bx - 1, by - 1, FarmLayoutEngine.barnW + 2, FarmLayoutEngine.barnH + 2)
-            // The feed gauge's cluster (Task 6) reserves its own ground here, before
-            // mushrooms/hay-yard scattering runs below, so those passes route around it
-            // instead of the gauge's bales silently losing a scatter-placed mushroom.
+            // The barn buffer just above already covers the three bale cells. The vat
+            // sits one column past it, so this is the reservation that actually keeps
+            // it clear of the mushroom/hay-yard scattering below — without it the vat,
+            // not the bales, is the one at risk of losing a scatter-placed mushroom.
             let gauge = gaugeCells(bx: bx, by: by)
             for cell in gauge.bales + [gauge.vat] {
                 mark(cell.x, cell.y)

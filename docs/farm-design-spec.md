@@ -592,11 +592,13 @@ visually distinct.
 
 The two ceilings behind the bales and the vat are not private to this corner. They are
 the same `tokenCeiling`/`dollarCeiling` that `FarmSettings` seeds once from your
-heaviest recorded block and then freezes, editable from the barn's settings, and they are also
-the denominator behind four other readouts: the always-visible **menu-bar percentage**,
-the dropdown's progress bar and label, the storehouse, and the info panel. Five places
-reading two numbers is the point — one configured ceiling, not several that can quietly
-drift apart.
+heaviest recorded block and then freezes, editable from the barn's settings.
+`tokenCeiling` is also the denominator behind four other readouts: the always-visible
+**menu-bar percentage**, the dropdown's progress bar and label, the storehouse, and the
+info panel. `dollarCeiling` has no such reach — it is the vat's denominator and nothing
+else's. Five places reading `tokenCeiling` is the point — one configured ceiling, not
+several that can quietly drift apart — and the vat is the one place that reads a second,
+independent number instead.
 
 ### 6.2 Tree stands — the rule that makes scenery deliberate
 

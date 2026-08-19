@@ -44,6 +44,11 @@ enum FeedGaugeReader {
     }
 
     private static func vat(spent: Double, ceiling: Double) -> Int {
+        // Not redundant with the `min(3, …)` below, despite appearances: without this
+        // guard, an over-spent block runs `Int(floor(3.0 * spent / ceiling))` on an
+        // unbounded ratio, and `Int(_:)` on a `Double` past `Int.max` traps rather than
+        // clamping. `bales` needs no equivalent guard because `remaining <= ceiling`
+        // already bounds its ratio at 1 by construction; `spent` here has no such bound.
         guard spent < ceiling else { return 3 }
         // `floor`, so a cent short of the ceiling is not a full vat.
         return max(0, min(3, Int(floor(3.0 * spent / ceiling))))
