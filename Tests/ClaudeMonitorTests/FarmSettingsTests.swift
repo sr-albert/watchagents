@@ -24,4 +24,67 @@ final class FarmSettingsTests: XCTestCase {
         let reloaded = FarmSettings(defaults: defaults)
         XCTAssertEqual(reloaded.basis, .cpu)
     }
+
+    private func freshDefaults(_ name: String) -> UserDefaults {
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        return d
+    }
+
+    func test_ceilingsSeedFromTheHeaviestRecordedBlock() {
+        let d = freshDefaults("seed-basic")
+        let s = FarmSettings(defaults: d)
+        XCTAssertFalse(s.ceilingsSeeded)
+
+        s.seedCeilingsIfNeeded(observedMaxTokens: 900, observedMaxCost: 9.0)
+
+        XCTAssertTrue(s.ceilingsSeeded)
+        XCTAssertEqual(s.tokenCeiling, 900)
+        XCTAssertEqual(s.dollarCeiling, 9.0, accuracy: 0.0001)
+    }
+
+    /// The reason the flag exists. A heavier block arriving later must NOT raise the ceiling,
+    /// or the bales refill and the denominator is moving again.
+    func test_aLaterHeavierBlockDoesNotRaiseTheCeiling() {
+        let d = freshDefaults("seed-once")
+        let s = FarmSettings(defaults: d)
+        s.seedCeilingsIfNeeded(observedMaxTokens: 900, observedMaxCost: 9.0)
+        s.seedCeilingsIfNeeded(observedMaxTokens: 5000, observedMaxCost: 50.0)
+
+        XCTAssertEqual(s.tokenCeiling, 900)
+        XCTAssertEqual(s.dollarCeiling, 9.0, accuracy: 0.0001)
+    }
+
+    func test_aUserEditSurvivesAHeavierBlock() {
+        let d = freshDefaults("seed-edit")
+        let s = FarmSettings(defaults: d)
+        s.seedCeilingsIfNeeded(observedMaxTokens: 900, observedMaxCost: 9.0)
+        s.tokenCeiling = 2000
+        s.seedCeilingsIfNeeded(observedMaxTokens: 5000, observedMaxCost: 50.0)
+
+        XCTAssertEqual(s.tokenCeiling, 2000)
+    }
+
+    func test_ceilingsPersistAcrossInstances() {
+        let d = freshDefaults("seed-persist")
+        let a = FarmSettings(defaults: d)
+        a.seedCeilingsIfNeeded(observedMaxTokens: 900, observedMaxCost: 9.0)
+        a.tokenCeiling = 1234
+
+        let b = FarmSettings(defaults: d)
+        XCTAssertTrue(b.ceilingsSeeded)
+        XCTAssertEqual(b.tokenCeiling, 1234)
+        XCTAssertEqual(b.dollarCeiling, 9.0, accuracy: 0.0001)
+    }
+
+    /// Nothing recorded yet means nothing to seed from. Seeding must not fire on zeros, or
+    /// the ceiling locks at zero forever and every gauge divides by nothing.
+    func test_seedingDoesNotFireOnAnEmptyHistory() {
+        let d = freshDefaults("seed-empty")
+        let s = FarmSettings(defaults: d)
+        s.seedCeilingsIfNeeded(observedMaxTokens: 0, observedMaxCost: 0)
+
+        XCTAssertFalse(s.ceilingsSeeded)
+        XCTAssertEqual(s.tokenCeiling, 0)
+    }
 }
