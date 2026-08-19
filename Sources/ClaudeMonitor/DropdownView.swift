@@ -129,7 +129,11 @@ struct DropdownView: View {
                 Text("No active usage block").foregroundStyle(.secondary)
             case .active(let block):
                 Text("\(block.startLocal) → \(block.endLocal)  ·  Reset in \(block.resetIn)")
-                ProgressView(value: Double(block.pct), total: 100) {
+                // Clamped, matching the modal and the info panel: a block can run past
+                // its own ceiling now that `pct` divides by a frozen ceiling rather than
+                // the observed max, and an unclamped value overflows the track instead
+                // of pinning it full.
+                ProgressView(value: Double(min(block.pct, 100)), total: 100) {
                     Text("Tokens \(block.usedTokens) / \(block.maxTokens)  (\(block.pct)%)")
                 }
                 Text("Cost $\(block.cost, specifier: "%.2f")  ·  Burn \(block.burnRate) tok/min  ·  Est $\(block.estimatedCost, specifier: "%.2f")")
