@@ -605,7 +605,7 @@ struct FarmView: View {
                         .ignoresSafeArea()
                         .onTapGesture { houseOpen = false }
                     FarmHouseModal(usage: viewModel.usageResult,
-                                   overloadSettings: viewModel.overloadSettings,
+                                   settings: viewModel.settings,
                                    sleepers: FarmCensus.sleepers(for: pens)) {
                         houseOpen = false
                     }

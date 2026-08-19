@@ -5,7 +5,7 @@ final class SkeletonTests: XCTestCase {
     @MainActor
     func test_dropdownView_instantiates_andBodyEvaluatesWithoutCrashing() {
         let viewModel = MonitorViewModel()
-        let view = DropdownView(viewModel: viewModel, overloadSettings: viewModel.overloadSettings)
+        let view = DropdownView(viewModel: viewModel, settings: viewModel.settings)
         _ = view.body
     }
 
@@ -30,11 +30,11 @@ final class SkeletonTests: XCTestCase {
         let suite = UserDefaults(suiteName: "dormant-threshold-test")!
         suite.removePersistentDomain(forName: "dormant-threshold-test")
 
-        XCTAssertEqual(OverloadSettings(defaults: suite).dormantAfterHours, 4)
+        XCTAssertEqual(FarmSettings(defaults: suite).dormantAfterHours, 4)
 
-        let settings = OverloadSettings(defaults: suite)
+        let settings = FarmSettings(defaults: suite)
         settings.dormantAfterHours = 8
-        XCTAssertEqual(OverloadSettings(defaults: suite).dormantAfterHours, 8)
+        XCTAssertEqual(FarmSettings(defaults: suite).dormantAfterHours, 8)
 
         suite.removePersistentDomain(forName: "dormant-threshold-test")
     }

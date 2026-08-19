@@ -8,7 +8,7 @@ final class MonitorViewModel: ObservableObject {
     private let processMonitor = ProcessMonitor()
     private let usageFetcher = UsageBlockFetcher()
     private let sessionStateTracker = SessionStateTracker()
-    let overloadSettings = OverloadSettings()
+    let settings = FarmSettings()
     private var processTimer: Timer?
     private var usageTimer: Timer?
     private var isPolling = false
@@ -46,8 +46,8 @@ final class MonitorViewModel: ObservableObject {
 
         let monitor = processMonitor
         let tracker = sessionStateTracker
-        let basis = overloadSettings.basis
-        let dormantAfter = overloadSettings.dormantAfterHours * 3600
+        let basis = settings.basis
+        let dormantAfter = settings.dormantAfterHours * 3600
         Task.detached { [weak self] in
             let rawSnapshot = monitor.snapshot()
             let now = Date()

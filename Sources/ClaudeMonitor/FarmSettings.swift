@@ -1,11 +1,12 @@
 import Foundation
 
-/// The farm's user-set preferences. Named for the overload basis it originally held; it
-/// now also carries the dormancy threshold, and a rename to `FarmSettings` was deferred
-/// rather than widen this feature's diff across five files. If a third setting arrives,
-/// rename it then — do not add a second settings object beside this one.
+/// Everything the user has set about the farm, persisted across launches.
+///
+/// Named `OverloadSettings` until it held five fields, four of which had nothing to do with
+/// overload. The `UserDefaults` keys are unchanged by that rename — they are the stored
+/// contract, and renaming them would silently reset every existing user's preferences.
 @MainActor
-final class OverloadSettings: ObservableObject {
+final class FarmSettings: ObservableObject {
     private static let storageKey = "overloadBasis"
     private static let dormantKey = "dormantAfterHours"
 

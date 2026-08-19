@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = NSHostingController(
             rootView: DropdownView(
                 viewModel: viewModel,
-                overloadSettings: viewModel.overloadSettings,
+                settings: viewModel.settings,
                 onOpenFarm: { [weak self] in self?.showFarmWindow() }
             )
         )

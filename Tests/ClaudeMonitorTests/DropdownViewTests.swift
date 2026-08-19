@@ -31,6 +31,6 @@ final class DropdownViewTests: XCTestCase {
     @MainActor
     func test_dropdown_bodyEvaluatesBeforeTheFirstPollLands() {
         _ = DropdownView(viewModel: MonitorViewModel(),
-                         overloadSettings: OverloadSettings()).body
+                         settings: FarmSettings()).body
     }
 }

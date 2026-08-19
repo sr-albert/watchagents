@@ -2,14 +2,14 @@ import XCTest
 @testable import ClaudeMonitor
 
 @MainActor
-final class OverloadSettingsTests: XCTestCase {
-    private let suiteName = "OverloadSettingsTests"
+final class FarmSettingsTests: XCTestCase {
+    private let suiteName = "FarmSettingsTests"
 
     func test_defaultsToBothWhenNothingStored() {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
 
-        let settings = OverloadSettings(defaults: defaults)
+        let settings = FarmSettings(defaults: defaults)
 
         XCTAssertEqual(settings.basis, .both)
     }
@@ -18,10 +18,10 @@ final class OverloadSettingsTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
 
-        let settings = OverloadSettings(defaults: defaults)
+        let settings = FarmSettings(defaults: defaults)
         settings.basis = .cpu
 
-        let reloaded = OverloadSettings(defaults: defaults)
+        let reloaded = FarmSettings(defaults: defaults)
         XCTAssertEqual(reloaded.basis, .cpu)
     }
 }

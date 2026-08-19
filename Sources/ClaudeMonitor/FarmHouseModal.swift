@@ -16,7 +16,7 @@ import SwiftUI
 /// the dismiss gestures belong to `FarmView`.
 struct FarmHouseModal: View {
     let usage: UsageBlockResult
-    @ObservedObject var overloadSettings: OverloadSettings
+    @ObservedObject var settings: FarmSettings
     let sleepers: [FarmCensus.SleeperRow]
     let onClose: () -> Void
 
@@ -33,7 +33,7 @@ struct FarmHouseModal: View {
             rule
             storehouse
             rule
-            settings
+            settingsView
             rule
             quit
         }
@@ -123,10 +123,10 @@ struct FarmHouseModal: View {
         }
     }
 
-    private var settings: some View {
+    private var settingsView: some View {
         VStack(alignment: .leading, spacing: 8) {
             section("SETTINGS")
-            Picker("Overload trigger", selection: $overloadSettings.basis) {
+            Picker("Overload trigger", selection: $settings.basis) {
                 ForEach(OverloadBasis.allCases, id: \.self) { basis in
                     Text(basis.rawValue.uppercased()).tag(basis)
                 }
@@ -140,8 +140,8 @@ struct FarmHouseModal: View {
                 // does not compare equal to a literal tag leaves the control blank with no
                 // error anywhere.
                 Picker("", selection: Binding(
-                    get: { Int(overloadSettings.dormantAfterHours.rounded()) },
-                    set: { overloadSettings.dormantAfterHours = Double($0) }
+                    get: { Int(settings.dormantAfterHours.rounded()) },
+                    set: { settings.dormantAfterHours = Double($0) }
                 )) {
                     ForEach([1, 2, 4, 8, 24], id: \.self) { hours in
                         Text(hours == 24 ? "1 day" : "\(hours)h").tag(hours)

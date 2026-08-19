@@ -25,7 +25,7 @@ enum SessionStateBadge {
 
 struct DropdownView: View {
     @ObservedObject var viewModel: MonitorViewModel
-    @ObservedObject var overloadSettings: OverloadSettings
+    @ObservedObject var settings: FarmSettings
     var onOpenFarm: () -> Void = {}
     @StateObject private var loginItem = LoginItemManager()
 
@@ -42,7 +42,7 @@ struct DropdownView: View {
                 get: { loginItem.isEnabled },
                 set: { loginItem.setEnabled($0) }
             ))
-            Picker("Overload trigger", selection: $overloadSettings.basis) {
+            Picker("Overload trigger", selection: $settings.basis) {
                 ForEach(OverloadBasis.allCases, id: \.self) { basis in
                     Text(basis.rawValue.uppercased()).tag(basis)
                 }
