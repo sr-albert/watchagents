@@ -105,4 +105,22 @@ final class FarmSettingsTests: XCTestCase {
         XCTAssertEqual(s.tokenCeiling, 500_000)
         XCTAssertEqual(s.dollarCeiling, 20.0, accuracy: 0.0001)
     }
+
+    /// The partial state a `didSet`-per-property fix would have let through: an edit to
+    /// one field marking the ceilings seeded while the other field is still zero, which
+    /// would wedge `FeedGaugeReader`'s `dollarCeiling > 0` guard shut for good. This is
+    /// the exact call `FarmHouseModal`'s token field makes — the untouched dollar field
+    /// re-clamped from its own current (still-zero) value, not written raw.
+    func test_editingOneFieldCannotLeaveTheOtherAtZero() {
+        let d = freshDefaults("seed-partial-state")
+        let s = FarmSettings(defaults: d)
+        XCTAssertEqual(s.dollarCeiling, 0)
+
+        s.configureCeilings(tokens: FarmHouseModal.clampedTokenCeiling(500_000),
+                            dollars: FarmHouseModal.clampedDollarCeiling(s.dollarCeiling))
+
+        XCTAssertTrue(s.ceilingsSeeded)
+        XCTAssertGreaterThan(s.dollarCeiling, 0)
+        XCTAssertGreaterThan(s.tokenCeiling, 0)
+    }
 }
