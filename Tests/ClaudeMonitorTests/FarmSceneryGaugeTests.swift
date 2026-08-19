@@ -17,6 +17,11 @@ final class FarmSceneryGaugeTests: XCTestCase {
                                            gauge: FeedGauge(bales: 3, vat: 0))
         XCTAssertEqual(props.filter { $0.tile == 93 }.count, 3)
         XCTAssertEqual(props.filter { $0.tile == 130 }.count, 1)
+        // `FarmView` splits this array positionally — `dropLast()` for the bales,
+        // `last` for the vat — rather than filtering by tile. Nothing else pins that
+        // order here, and a reorder would still pass both counts above while making
+        // `FarmView` composite the vat's fill onto a bale and draw the vat as bare.
+        XCTAssertEqual(props.last?.tile, 130, "FarmView splits this array positionally — the vat must be last")
     }
 
     func test_anEmptyGaugeDrawsNoBalesButKeepsTheVat() {
@@ -25,6 +30,7 @@ final class FarmSceneryGaugeTests: XCTestCase {
         XCTAssertEqual(props.filter { $0.tile == 93 }.count, 0)
         XCTAssertEqual(props.filter { $0.tile == 130 }.count, 1,
                        "the vat is always present; it is its fill that varies")
+        XCTAssertEqual(props.last?.tile, 130, "FarmView splits this array positionally — the vat must be last")
     }
 
     /// All-or-nothing. A layout too small for the reserved cluster draws ZERO gauge props —
