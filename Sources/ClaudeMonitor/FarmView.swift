@@ -164,7 +164,7 @@ struct BuiltScene {
     let contentRows: Int
 }
 
-func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
+func buildScene(pens: [FarmPen], layout: FarmLayout, gauge: FeedGauge? = nil) -> BuiltScene {
     // `FarmLayoutEngine.layout` reports no barn at all when there are no pens (there's
     // nothing to bottom-align a row to). Spec: the empty state must still be a farm —
     // grass, barn, woodland — not a blank window. Stand the barn near the top margin
@@ -210,7 +210,8 @@ func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
         cols: normalized.cols, rows: normalized.rows,
         pens: normalized.pens.map {
             StaticLayerKey.PenKey(cwd: $0.pen.cwd, species: $0.pen.species, count: $0.pen.processes.count)
-        }
+        },
+        gauge: gauge
     )
     let staticImage = StaticLayerCache.image(for: key) {
         let dirt = FarmDirt.dirtCells(layout: normalized)
@@ -224,7 +225,17 @@ func buildScene(pens: [FarmPen], layout: FarmLayout) -> BuiltScene {
             furniture.append(contentsOf: FarmPenFurniture.fenceTiles(for: pen))
             furniture.append(contentsOf: FarmPenFurniture.troughTiles(for: pen))
         }
+        // The bales blit like any other furniture tile; the vat is drawn separately
+        // below with its fill level, rather than as the bare placeholder tile
+        // `gaugeProps` hands back for it. `gaugeProps` always appends the vat cell
+        // last (after however many bale cells survive, even zero), so `dropLast`/`last`
+        // is a safe split: empty input (nil gauge, or a cluster that didn't fit) yields
+        // no bales and a nil vat, which is the "withheld entirely" case both want.
+        let gaugeTiles = FarmScenery.gaugeProps(layout: normalized, gauge: gauge)
+        furniture.append(contentsOf: gaugeTiles.dropLast())
+        let vatTile = gaugeTiles.last
         return renderStaticLayer(dirt: dirt, scenery: scenery, furniture: furniture,
+                                 vat: vatTile.map { (tile: $0, level: gauge?.vat ?? 0) },
                                  cols: contentCols, rows: contentRows)
     }
 
@@ -249,6 +260,10 @@ private struct StaticLayerKey: Equatable {
     let cols: Int
     let rows: Int
     let pens: [PenKey]
+    /// The gauge is baked into the static layer, so a changed budget must invalidate it.
+    /// Omitting this compiles, passes every test, and freezes the bales at launch — the
+    /// exact "stale cached image" this key's doc comment warns about.
+    let gauge: FeedGauge?
 }
 
 /// Single-slot memo (not a growing dictionary): this app shows one farm view at a
@@ -276,6 +291,7 @@ private enum StaticLayerCache {
 /// Flattens ground + dirt + barn/scenery + fences/troughs into one offscreen bitmap, in
 /// 1× tile-pixel space (draw order per spec §8, steps 1-5).
 private func renderStaticLayer(dirt: Set<TilePoint>, scenery: [SceneryTile], furniture: [SceneryTile],
+                                vat: (tile: SceneryTile, level: Int)?,
                                 cols: Int, rows: Int) -> CGImage? {
     let w = max(1, cols * 16), h = max(1, rows * 16)
     guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
@@ -307,6 +323,19 @@ private func renderStaticLayer(dirt: Set<TilePoint>, scenery: [SceneryTile], fur
     }
     for t in scenery { blitTile(t.tile, t.x, t.y) }
     for t in furniture { blitTile(t.tile, t.x, t.y) }
+
+    // The vat's fill, painted over its empty tile rather than drawn as a bare blit —
+    // this is the entire reason the placeholder was held back from `furniture` above.
+    // Level 3 is byte-identical to tile 0131 by construction (Task 5's test proves it),
+    // so the shipped tile is preferred there over paying for a composite — but the
+    // fallback if that lookup ever fails is the composite, never `empty`: a full vat
+    // silently rendered empty reads as an unspent budget, the same lie `gaugeProps`
+    // refuses to risk for the bales.
+    if let vat, let empty = FarmAssets.tile(vat.tile.tile) {
+        let filled = (vat.level >= 3 ? FarmAssets.tile(131) : nil)
+            ?? FarmVat.compose(over: empty, level: vat.level)
+        ctx.draw(filled, in: CGRect(x: vat.tile.x * 16, y: h - (vat.tile.y + 1) * 16, width: 16, height: 16))
+    }
 
     return ctx.makeImage()
 }
@@ -567,6 +596,14 @@ struct FarmView: View {
 
     private var pens: [FarmPen] { FarmGrouping.pens(from: viewModel.snapshot.processes) }
 
+    /// Derived here, in the view body, and never inside the `Canvas` closure — that closure
+    /// runs at 12Hz and this allocates.
+    private var feedGauge: FeedGauge? {
+        FeedGaugeReader.gauge(for: viewModel.usageResult,
+                              tokenCeiling: viewModel.settings.tokenCeiling,
+                              dollarCeiling: viewModel.settings.dollarCeiling)
+    }
+
     /// Ajar means the barn is in use — by you, or by something sleeping in it.
     private var barnOccupied: Bool { !FarmCensus.sleepers(for: pens).isEmpty }
 
@@ -644,7 +681,7 @@ struct FarmView: View {
     private var farmCanvas: some View {
         GeometryReader { geo in
             let (scale, rawLayout) = FarmScene.selectScaleAndLayout(pens: pens, width: geo.size.width, height: geo.size.height)
-            let scene = buildScene(pens: pens, layout: rawLayout)
+            let scene = buildScene(pens: pens, layout: rawLayout, gauge: feedGauge)
             let tile = CGFloat(16 * scale)
             let contentWidth = max(geo.size.width, CGFloat(scene.contentCols) * tile)
             let contentHeight = max(geo.size.height, CGFloat(scene.contentRows) * tile)
