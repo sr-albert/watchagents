@@ -70,4 +70,19 @@ final class FarmSettings: ObservableObject {
         dollarCeiling = observedMaxCost
         ceilingsSeeded = true
     }
+
+    /// The barn's only way to record a deliberate edit. Writes both ceilings and marks
+    /// them seeded in one call, so the three can never land in a partial state — an edit
+    /// to one field alone, made before the first seed, used to leave `ceilingsSeeded`
+    /// false and get silently overwritten by the next successful seed. Callers pass the
+    /// field being edited and the *current* value of the other, so a token-only edit
+    /// doesn't zero out the dollar ceiling and wedge `FeedGaugeReader`'s `> 0` guard shut
+    /// forever. This also makes `ceilingsSeeded` the single authority for "configured" —
+    /// `UsageBlockFetcher`'s own `tokenCeiling > 0` check is a second sentinel on the same
+    /// question and should eventually defer to this one rather than drift independently.
+    func configureCeilings(tokens: Int, dollars: Double) {
+        tokenCeiling = tokens
+        dollarCeiling = dollars
+        ceilingsSeeded = true
+    }
 }

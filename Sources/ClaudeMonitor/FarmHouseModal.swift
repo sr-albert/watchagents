@@ -156,7 +156,19 @@ struct FarmHouseModal: View {
                 Spacer(minLength: 0)
                 TextField("", value: Binding(
                     get: { settings.tokenCeiling },
-                    set: { settings.tokenCeiling = Self.clampedTokenCeiling($0) }
+                    // Routed through `configureCeilings` rather than the property setter
+                    // directly, so the edit also marks the ceilings seeded — otherwise it
+                    // is live but unprotected, and the first successful `ccusage` poll
+                    // silently replaces it. The dollar side is re-clamped from its current
+                    // value, not written raw, so an edit here can never leave the other
+                    // ceiling at zero (which would wedge `FeedGaugeReader`'s `> 0` guard
+                    // shut for good). One visible side effect: editing tokens before ever
+                    // touching dollars snaps the dollar field up to $0.01, which can read
+                    // as a near-full vat until the user edits that field too — a stale but
+                    // recoverable number beats a gauge that can never come back.
+                    set: { settings.configureCeilings(
+                        tokens: Self.clampedTokenCeiling($0),
+                        dollars: Self.clampedDollarCeiling(settings.dollarCeiling)) }
                 ), formatter: Self.tokenFormatter)
                     .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)
@@ -170,7 +182,10 @@ struct FarmHouseModal: View {
                     .opacity(0.65)
                 TextField("", value: Binding(
                     get: { settings.dollarCeiling },
-                    set: { settings.dollarCeiling = Self.clampedDollarCeiling($0) }
+                    // Mirror of the token field above — see its comment.
+                    set: { settings.configureCeilings(
+                        tokens: Self.clampedTokenCeiling(settings.tokenCeiling),
+                        dollars: Self.clampedDollarCeiling($0)) }
                 ), formatter: Self.dollarFormatter)
                     .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)

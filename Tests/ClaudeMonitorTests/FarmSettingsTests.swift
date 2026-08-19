@@ -87,4 +87,22 @@ final class FarmSettingsTests: XCTestCase {
         XCTAssertFalse(s.ceilingsSeeded)
         XCTAssertEqual(s.tokenCeiling, 0)
     }
+
+    /// The failure mode `configureCeilings` exists to close: on a fresh install `ccusage`
+    /// may never report before the user reaches the barn and sets a budget by hand. That
+    /// edit lands while `ceilingsSeeded` is still false, and a later, first successful
+    /// seed must not be allowed to treat it as unconfigured and overwrite it.
+    func test_anExplicitEditBeforeAnySeedSurvivesTheFirstSeed() {
+        let d = freshDefaults("seed-edit-before-seed")
+        let s = FarmSettings(defaults: d)
+        XCTAssertFalse(s.ceilingsSeeded)
+
+        s.configureCeilings(tokens: 500_000, dollars: 20.0)
+        XCTAssertTrue(s.ceilingsSeeded)
+
+        s.seedCeilingsIfNeeded(observedMaxTokens: 5000, observedMaxCost: 50.0)
+
+        XCTAssertEqual(s.tokenCeiling, 500_000)
+        XCTAssertEqual(s.dollarCeiling, 20.0, accuracy: 0.0001)
+    }
 }
