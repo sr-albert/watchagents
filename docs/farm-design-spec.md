@@ -427,7 +427,7 @@ question this table answers.
 It is also silent at every level, the same way `dormant` is silent at rest: no motion,
 no colour shift, no badge, whether the third bale just came down or the vat just topped
 out. That silence is structural, not a restraint someone could loosen later — the gauge
-is baked into the cached static layer (§6.1), which by construction cannot animate. So
+is baked into the cached static layer, which by construction cannot animate. So
 it can never out-rank `overloaded` for attention the way a badge or a pulse would; the
 only thing it is allowed to say is what is already standing or filled on the ground.
 
@@ -560,15 +560,18 @@ barn's right shoulder, `0116` pitchfork on the left wall, `0106`/`0107`
 barrel+bucket, `0057` mailbox on the lane, `0083` signpost at the
 crossroads, `0103` character by the door for scale and life. The right shoulder also
 carries the feed gauge (below): three `0093` bales stacked in the column the hay pair
-used to occupy, and the relocated `0130` one column over — no longer a chest, but the
-vat the gauge's fill is painted into.
+used to occupy, and the relocated `0130` two columns over, with the barrel's column
+sitting between them — no longer a chest, but the vat the gauge's fill is painted into.
 
-**Two of those tiles are now a gauge, not decoration.** The three `0093` bales are a
-stack: one comes down for every third of the block's *token* ceiling spent, `ceil`'d
-over what remains, so a single remaining token still leaves one standing. The relocated
-`0130` is the vat's empty tile; its fill is painted over it, not drawn as new art (§7
-compromise 4 has the `floor`-over-thirds rule and the byte-equality proof). `0094`
-beehive, `0106`/`0107` barrel+bucket and `0116` pitchfork keep doing exactly what they
+**Two of those tiles are now a gauge, not decoration.** The bales and the vat are
+mirrors of each other, and deliberately asymmetric about which way they round: the three
+`0093` bales `ceil` over what *remains* of the block's *token* ceiling, so a single
+remaining token still leaves one standing; the vat `floor`s over what is *spent* of a
+separate *dollar* ceiling, so a cent short of the ceiling is not yet a full vat. Both
+divide by thirds, one bale or one vat-row per third. The relocated `0130` is the vat's
+empty tile; its fill is painted over it, not drawn as new art (§7 compromise 4 has the
+byte-equality proof). `0094` beehive, `0106`/`0107` barrel+bucket and `0116` pitchfork
+keep doing exactly what they
 always did — pure decoration, no reading required. The split exists so the corner still
 looks like a farmyard corner and not an instrument panel: two props start meaning
 something, and the rest of the cluster stays exactly as busy and as legible as before.
