@@ -457,7 +457,7 @@ Escalation: `idle` → `frozen` (10 min of idle CPU) → `dormant` (4h of termin
 still frozen). The second condition is load-bearing: without it a session running a long
 autonomous task while you are away would be filed into the barn.
 
-4h is the default, not a fixed constant: it is `OverloadSettings.dormantAfterHours`,
+4h is the default, not a fixed constant: it is `FarmSettings.dormantAfterHours`,
 user-adjustable from the barn.
 
 **Overloaded — red pulse, `amt` oscillating `0 → 0.45` at 1.2 Hz:**
