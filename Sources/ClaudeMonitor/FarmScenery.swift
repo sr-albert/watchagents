@@ -127,6 +127,13 @@ enum FarmScenery {
         }
         if let bx = layout.barnX, let by = layout.barnY {
             mark(bx - 1, by - 1, FarmLayoutEngine.barnW + 2, FarmLayoutEngine.barnH + 2)
+            // The feed gauge's cluster (Task 6) reserves its own ground here, before
+            // mushrooms/hay-yard scattering runs below, so those passes route around it
+            // instead of the gauge's bales silently losing a scatter-placed mushroom.
+            let gauge = gaugeCells(bx: bx, by: by)
+            for cell in gauge.bales + [gauge.vat] {
+                mark(cell.x, cell.y)
+            }
         }
         for ly in layout.laneYs {
             mark(layout.marginL - 1, ly - 1,
@@ -210,19 +217,58 @@ enum FarmScenery {
         }
         if let bx = layout.barnX, let by = layout.barnY {
             let w = FarmLayoutEngine.barnW, h = FarmLayoutEngine.barnH
-            placeProp(93, bx + w, by + h - 2)       // hay, right shoulder
-            placeProp(93, bx + w, by + h - 1)       // hay, right shoulder
+            // The two bales and the chest that used to live here are now `gaugeProps`
+            // (Task 6) — a bale that silently fails to draw would read as spent budget,
+            // so those props no longer go through this best-effort `placeProp` path.
             placeProp(94, bx + w + 1, by + h - 1)   // beehive, beside the hay
             placeProp(116, bx - 1, by + h - 1)      // pitchfork, left wall
             placeProp(106, bx + w + 1, by + h - 2)  // barrel, right shoulder
             placeProp(107, bx + w + 2, by + h - 1)  // bucket, right shoulder
-            placeProp(130, bx - 1, by + h + 1)      // chest, left of the barn
             if let firstLane = layout.laneYs.first {
                 placeProp(57, bx + 5, firstLane - 1)                              // mailbox
                 placeProp(83, bx - 1, firstLane + FarmLayoutEngine.laneH)         // signpost
             }
         }
 
+        return out
+    }
+
+    /// The feed gauge's four cells at the barn's right shoulder: three bales stacked in
+    /// the column the old pair of hay props used, and the vat one column over, above the
+    /// barrel/beehive/bucket row. Shared by the reservation in `decorate` and by
+    /// `gaugeProps` itself, so the two can never disagree about where the cluster sits.
+    private static func gaugeCells(bx: Int, by: Int) -> (bales: [TilePoint], vat: TilePoint) {
+        let w = FarmLayoutEngine.barnW, h = FarmLayoutEngine.barnH
+        let bales = (0..<3).map { TilePoint(x: bx + w, y: by + h - 1 - $0) }
+        let vat = TilePoint(x: bx + w + 2, y: by + h - 2)
+        return (bales, vat)
+    }
+
+    /// The straw-bale-and-vat token-budget reading (spec §6.1's farmyard cluster, wearing
+    /// a second job). The three bales are a vertical stack, ground cell first; spending
+    /// the budget takes the stack down from the top, so `gauge.bales` keeps that many
+    /// cells starting from the bottom of `gaugeCells`'s array. The vat's fill is painted
+    /// separately (`FarmVat`) over the tile placed here.
+    ///
+    /// Deliberately not `placeProp`: that helper silently skips a cell it cannot draw, which is
+    /// right for decoration and wrong here. A bale that quietly fails to appear reads as spent
+    /// budget — the gauge would lie. So the cells are reserved up front, and if the cluster
+    /// cannot be placed the whole gauge is withheld rather than half-drawn.
+    static func gaugeProps(layout: FarmLayout, gauge: FeedGauge?) -> [SceneryTile] {
+        guard let gauge, let bx = layout.barnX, let by = layout.barnY else { return [] }
+        let cells = gaugeCells(bx: bx, by: by)
+        let allCells = cells.bales + [cells.vat]
+
+        func fits(_ p: TilePoint) -> Bool {
+            guard p.x >= 0, p.x < layout.cols, p.y >= 0, p.y < layout.rows else { return false }
+            return !layout.pens.contains {
+                p.x >= $0.x && p.x < $0.x + $0.w && p.y >= $0.y && p.y < $0.y + $0.h
+            }
+        }
+        guard allCells.allSatisfy(fits) else { return [] }
+
+        var out = cells.bales.prefix(gauge.bales).map { SceneryTile(x: $0.x, y: $0.y, tile: 93) }
+        out.append(SceneryTile(x: cells.vat.x, y: cells.vat.y, tile: 130))
         return out
     }
 }
