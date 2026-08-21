@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feed &amp; Harvest — farm resource props</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --fg: #1a1a1a;
+    --muted: #6b6b70;
+    --card-bg: #ffffff;
+    --border: #e2e2e6;
+    --accent: #2563eb;
+    --accent-bg: #eef4ff;
+    --good: #15803d;
+    --bad: #b91c1c;
+    --locked-bg: #f0f7f1;
+    --locked-br: #bfdcc4;
+    --code-bg: #f0f0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a;
+      --fg: #eaeaec;
+      --muted: #9a9aa2;
+      --card-bg: #1f2023;
+      --border: #303136;
+      --accent: #60a5fa;
+      --accent-bg: #16233a;
+      --good: #4ade80;
+      --bad: #f87171;
+      --locked-bg: #182119;
+      --locked-br: #2f4a34;
+      --code-bg: #26272b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1.5rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.55;
+  }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 1.65rem; margin: 0 0 0.25rem; }
+  .subtitle { color: var(--muted); margin: 0 0 2.25rem; }
+  h2 {
+    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); font-weight: 600;
+    margin: 2.5rem 0 0.9rem; padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em; background: var(--code-bg);
+    padding: 0.1em 0.35em; border-radius: 4px;
+  }
+
+  .locked { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem; }
+  .locked article {
+    background: var(--locked-bg); border: 1px solid var(--locked-br);
+    border-radius: 10px; padding: 0.9rem 1rem;
+  }
+  .locked .q { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .locked .a { font-weight: 650; margin: 0.15rem 0 0.3rem; }
+  .locked p { margin: 0; font-size: 0.85rem; color: var(--muted); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.15rem 1.25rem;
+  }
+  .card.recommended { border-color: var(--accent); background: var(--accent-bg); }
+  .card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+  .card .tag {
+    display: inline-block; font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--accent); font-weight: 700; margin-bottom: 0.4rem;
+  }
+  .card p { margin: 0.4rem 0; font-size: 0.9rem; }
+  .card ul { margin: 0.5rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; }
+  .card li { margin-bottom: 0.2rem; }
+  .pro::marker, .con::marker { content: ""; }
+  .pro, .con { list-style: none; margin-left: -0.9rem; }
+  .pro::before { content: "+ "; color: var(--good); font-weight: 700; }
+  .con::before { content: "− "; color: var(--bad); font-weight: 700; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  td.wrap { white-space: normal; }
+
+  .facts { list-style: none; padding: 0; margin: 0; }
+  .facts li {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 0.7rem 0.9rem; margin-bottom: 0.6rem; font-size: 0.9rem;
+  }
+  .facts strong { display: block; }
+
+  .open {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.8rem 1rem; margin-bottom: 0.6rem; font-size: 0.9rem;
+  }
+  .open strong { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Feed &amp; Harvest</h1>
+  <p class="subtitle">Turning the farm's resource props into a token-budget reading — decisions so far, and the one question still open.</p>
+
+  <h2>Settled</h2>
+  <section class="locked">
+    <article>
+      <div class="q">Scope</div>
+      <div class="a">Whole-farm</div>
+      <p>One feed store, one harvest pile. No per-project attribution, no new data path.</p>
+    </article>
+    <article>
+      <div class="q">What feed measures</div>
+      <div class="a">Tokens, not CPU/RAM</div>
+      <p>CPU and RAM already drive the animals' own behaviour. Tokens have no presence in the scene at all.</p>
+    </article>
+    <article>
+      <div class="q">The bale's denominator</div>
+      <div class="a">A ceiling you configure</div>
+      <p>Set your plan's budget in the farmhouse; the bale then empties honestly against it.</p>
+    </article>
+  </section>
+
+  <h2>Open: what does the harvest measure?</h2>
+  <p style="margin-top:0;color:var(--muted);font-size:0.92rem;">
+    With a configured ceiling, <em>remaining</em> is just ceiling minus <em>burnt</em> — so the harvest needs a
+    different job, or it's the same fact drawn twice.
+  </p>
+  <section class="cards">
+    <article class="card">
+      <h3>A · A longer clock</h3>
+      <p>Bale = the current 5-hour block. Milk = today's total, across blocks, resetting at midnight.</p>
+      <ul>
+        <li class="pro">Stock vs yield — the truest farm reading</li>
+        <li class="pro">Harvest survives the 5-hour reset</li>
+        <li class="con">Needs a second <code>ccusage daily</code> call</li>
+      </ul>
+    </article>
+    <article class="card recommended">
+      <span class="tag">Recommended</span>
+      <h3>B · Money, not tokens</h3>
+      <p>Bale = tokens left in the block. Milk tank = dollars spent, filling toward the projected total.</p>
+      <ul>
+        <li class="pro">Different unit — cannot be redundant</li>
+        <li class="pro">Zero new calls: <code>costUSD</code> and <code>projection.totalCost</code> are already fetched</li>
+        <li class="con">Two units on screen at once to read</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>C · Work produced</h3>
+      <p>Eggs = <code>outputTokens</code> only — the tokens Claude actually wrote back.</p>
+      <ul>
+        <li class="pro">The prettiest metaphor: hens lay what the farm made</li>
+        <li class="con">Output is a small, lumpy slice — the tray sits near-empty</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>D · No harvest</h3>
+      <p>The bale alone. One prop, one fact.</p>
+      <ul>
+        <li class="pro">Nothing redundant; §7 "no new art" stays intact</li>
+        <li class="con">Loses the sense of accumulation entirely</li>
+      </ul>
+    </article>
+  </section>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Option</th><th>Bale shows</th><th>Harvest shows</th><th>Extra calls</th><th>Resets</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A · Longer clock</td><td>Block budget left</td><td>Today's tokens</td><td>1 (<code>daily</code>)</td><td>Bale 5h / milk midnight</td></tr>
+        <tr><td><strong>B · Money</strong></td><td>Block budget left</td><td>Dollars spent</td><td>none</td><td>Both every 5h</td></tr>
+        <tr><td>C · Work produced</td><td>Block budget left</td><td>Output tokens</td><td>none</td><td>Both every 5h</td></tr>
+        <tr><td>D · No harvest</td><td>Block budget left</td><td>—</td><td>none</td><td>Every 5h</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Facts that shaped this</h2>
+  <ul class="facts">
+    <li>
+      <strong>ccusage has no plan quota.</strong>
+      <code>blocks -t max</code> adds no field to the JSON; <code>"max"</code> just means your own heaviest
+      recorded block. Any real ceiling has to be configured.
+    </li>
+    <li>
+      <strong>CPU is mostly near zero.</strong>
+      Claude's work happens server-side (spec §0a), and <code>SessionState.swift:25-35</code> already spends
+      cpu/mem on the thresholds that make animals stand, walk, or bounce.
+    </li>
+    <li>
+      <strong>Per-project attribution was available but not needed.</strong>
+      <code>ccusage session --json</code> keys on session UUID, and the UUID resolves to a project through
+      <code>~/.claude/projects/</code>. Set aside with the whole-farm scope.
+    </li>
+  </ul>
+
+  <h2>Still to decide after this</h2>
+  <div class="open"><strong>Where the props stand.</strong> The barnyard hay yard, the barn's right shoulder, or the info panel — the scene has an existing farmyard cluster the bale could join.</div>
+  <div class="open"><strong>Spec amendments.</strong> §7 compromise 4 rules out a silo and says nothing needs new art but the font; §5.1 ranks cues by how much you must act, and a feed gauge must not out-shout <code>overloaded</code>.</div>
+  <div class="open"><strong>How the ceiling is entered.</strong> Plan presets risk going stale; a raw token number defaulted to your observed maximum does not.</div>
+</main>
+</body>
+</html>

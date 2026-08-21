@@ -5,6 +5,23 @@ struct ClaudeProcess: Equatable {
     let cpu: Double
     let mem: Double
     var cwd: String = "(unknown)"
+    var state: SessionState = .idle
+    /// When this session stopped working, from `SessionStateTracker`. The farm anchors a
+    /// resting animal at the spot its walk ended, and this is the instant that walk
+    /// ended — see `FarmAnimalPlacer.place`. Nil until a session has gone quiet, and for
+    /// any caller that builds a `ClaudeProcess` without a tracker behind it.
+    var idleSince: Date?
+    /// Short name of the controlling terminal, as both `ps aux` and `w` write it
+    /// (`"s017"`). Nil when `ps` reports `??` — no controlling terminal, which is what
+    /// the menu-bar app itself shows.
+    var tty: String?
+    /// Seconds since this session's terminal last received input, from `w`. Nil when the
+    /// process has no tty, when `w` does not list it, or when its idle column could not
+    /// be parsed — see `TerminalIdle`. Nil never satisfies the dormancy threshold.
+    var ttyIdle: TimeInterval?
+    /// When this session fell asleep, from `SessionStateTracker` — the anchor the gate
+    /// walk is measured from, exactly as `idleSince` anchors the resting position.
+    var dormantSince: Date?
 }
 
 struct ProcessSnapshot: Equatable {
@@ -24,11 +41,15 @@ enum ProcessParsing {
                 continue
             }
             let fields = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-            guard fields.count >= 4,
+            // Field 6 is `ps aux`'s TT column. Requiring it raises the old `>= 4` floor:
+            // a line too short to hold a tty is malformed, not a tty-less process.
+            guard fields.count >= 7,
                   let pid = Int(fields[1]),
                   let cpu = Double(fields[2]),
                   let mem = Double(fields[3]) else { continue }
-            results.append(ClaudeProcess(pid: pid, cpu: cpu, mem: mem))
+            var process = ClaudeProcess(pid: pid, cpu: cpu, mem: mem)
+            process.tty = fields[6] == "??" ? nil : fields[6]
+            results.append(process)
         }
         return results
     }
@@ -88,6 +109,11 @@ final class ProcessMonitor {
             if let cwd = ProcessParsing.parseCWD(lsofOutput) {
                 processes[i].cwd = cwd
             }
+        }
+        // One `w` for the whole sweep, unlike `lsof` above which is unavoidably per-pid.
+        let idleByTTY = TerminalIdle.parse(run("/usr/bin/w", ["-h"]))
+        for i in processes.indices {
+            processes[i].ttyIdle = processes[i].tty.flatMap { idleByTTY[$0] }
         }
         return ProcessParsing.snapshot(from: processes)
     }

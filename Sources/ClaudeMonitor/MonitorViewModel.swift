@@ -7,6 +7,8 @@ final class MonitorViewModel: ObservableObject {
 
     private let processMonitor = ProcessMonitor()
     private let usageFetcher = UsageBlockFetcher()
+    private let sessionStateTracker = SessionStateTracker()
+    let settings = FarmSettings()
     private var processTimer: Timer?
     private var usageTimer: Timer?
     private var isPolling = false
@@ -43,10 +45,29 @@ final class MonitorViewModel: ObservableObject {
         isRefreshingProcesses = true
 
         let monitor = processMonitor
+        let tracker = sessionStateTracker
+        let basis = settings.basis
+        let dormantAfter = settings.dormantAfterHours * 3600
         Task.detached { [weak self] in
-            let result = monitor.snapshot()
+            let rawSnapshot = monitor.snapshot()
+            let now = Date()
             guard let self else { return }
             await MainActor.run {
+                let states = tracker.states(for: rawSnapshot, now: now, basis: basis,
+                                            dormantAfter: dormantAfter)
+                let processes = rawSnapshot.processes.map { process -> ClaudeProcess in
+                    var updated = process
+                    updated.state = states[process.pid] ?? .idle
+                    updated.idleSince = tracker.history(for: process.pid)?.idleSince
+                    updated.dormantSince = tracker.history(for: process.pid)?.dormantSince
+                    return updated
+                }
+                let result = ProcessSnapshot(
+                    processes: processes,
+                    cpuTotal: rawSnapshot.cpuTotal,
+                    memTotal: rawSnapshot.memTotal,
+                    sessionCount: rawSnapshot.sessionCount
+                )
                 if result != self.snapshot { self.snapshot = result }
                 self.isRefreshingProcesses = false
             }
@@ -60,10 +81,18 @@ final class MonitorViewModel: ObservableObject {
         isRefreshingUsage = true
 
         let fetcher = usageFetcher
+        // Captured here, on the main actor, the same way `basis` and `dormantAfter` are
+        // above — reading @MainActor settings from inside Task.detached is the mistake.
+        let tokenCeiling = settings.tokenCeiling
         Task.detached { [weak self] in
-            let result = fetcher.fetch()
+            let result = fetcher.fetch(tokenCeiling: tokenCeiling)
             guard let self else { return }
             await MainActor.run {
+                if case .active(let block) = result {
+                    self.settings.seedCeilingsIfNeeded(
+                        observedMaxTokens: block.observedMaxTokens,
+                        observedMaxCost: block.observedMaxCost)
+                }
                 self.usageResult = result
                 self.isRefreshingUsage = false
             }

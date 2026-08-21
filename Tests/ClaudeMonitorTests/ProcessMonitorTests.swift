@@ -47,4 +47,33 @@ final class ProcessMonitorTests: XCTestCase {
         XCTAssertEqual(snapshot.sessionCount, 2)
         XCTAssertEqual(snapshot.processes.count, 3)
     }
+
+    func test_claudeProcess_defaultsStateToIdle() {
+        let process = ClaudeProcess(pid: 42, cpu: 1.0, mem: 1.0)
+
+        XCTAssertEqual(process.state, .idle)
+    }
+
+    func test_parsePS_readsTheTTYColumn() {
+        let output = """
+        albert 501  12.3  1.5 123456 45678 s017 S+   9:00AM 0:12.34 claude
+        albert 502   0.5  0.3 123456 45678 ??   S    9:00AM 0:12.34 claude
+        """
+
+        let result = ProcessParsing.parsePS(output, excludingProcessNames: [])
+
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result[0].tty, "s017")
+        // "??" is ps's no-controlling-terminal marker, not a tty name. A process with no
+        // terminal has no terminal idle time and can never be dormant.
+        XCTAssertNil(result[1].tty)
+    }
+
+    /// A real `ps aux` line always carries 11 fields, so raising the floor from 4 to 7 can
+    /// only reject malformed input — never a genuine tty-less process, which still gets
+    /// all 11 with `??` in the TTY column.
+    func test_parsePS_skipsLinesTooShortToHoldATTY() {
+        let output = "albert 501 12.3 1.5 claude\n"
+        XCTAssertTrue(ProcessParsing.parsePS(output, excludingProcessNames: []).isEmpty)
+    }
 }

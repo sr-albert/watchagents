@@ -17,6 +17,16 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 
+# SPM's generated accessor resolves Bundle.module against Bundle.main.bundleURL, which is
+# the .app's root and can never be sealed by codesign. FarmAssets prefers Contents/Resources
+# instead (a sealed location: everything under it is hashed into the resource seal
+# regardless of --deep), so the bundle must land there, and it must do so BEFORE signing
+# so codesign includes it in that seal. (Landing it in Contents/MacOS instead is what
+# broke --deep previously: codesign tries to classify anything named "*.bundle" there as
+# nested executable code and fails since it has no Info.plist -- Contents/Resources avoids
+# that classification entirely.)
+cp -R "$BUILD_DIR/ClaudeMonitor_ClaudeMonitor.bundle" "$APP_DIR/Contents/Resources/"
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
